@@ -1,0 +1,434 @@
+From a59bd0894efae70f24c4fb8dae773225341b1a4a Mon Sep 17 00:00:00 2001
+From: auvred <aauvred@gmail.com>
+Date: Mon, 15 Dec 2025 12:37:25 +0300
+Subject: [PATCH] Golar extension
+
+---
+ cmd/tsgo/lsp.go                     |  9 +++++++++
+ cmd/tsgo/sys.go                     |  6 ++++++
+ internal/ast/ast.go                 |  2 ++
+ internal/core/core.go               |  2 +-
+ internal/execute/tsc.go             |  1 +
+ internal/execute/tsc/compile.go     |  3 +++
+ internal/execute/tsc/diagnostics.go |  5 +++--
+ internal/golarext/golarext.go       | 17 +++++++++++++++++
+ internal/ls/diagnostics.go          |  6 ++++++
+ internal/ls/host.go                 |  4 ++++
+ internal/ls/hover.go                |  2 +-
+ internal/ls/lsconv/converters.go    |  2 +-
+ internal/lsp/server.go              | 10 ++++++++++
+ internal/module/resolver.go         |  5 +++++
+ internal/module/util.go             |  2 +-
+ internal/project/parsecache.go      |  9 ++++++++-
+ internal/project/session.go         |  4 ++++
+ internal/project/snapshot.go        |  6 ++++++
+ internal/tspath/extension.go        |  6 +++---
+ 19 files changed, 91 insertions(+), 10 deletions(-)
+ create mode 100644 internal/golarext/golarext.go
+
+diff --git a/cmd/tsgo/lsp.go b/cmd/tsgo/lsp.go
+index 0dd04c57f..6ea054e4a 100644
+--- a/cmd/tsgo/lsp.go
++++ b/cmd/tsgo/lsp.go
+@@ -10,10 +10,12 @@ import (
+ 	"runtime"
+ 	"syscall"
+ 
++	"github.com/auvred/golar/golar"
+ 	"github.com/microsoft/typescript-go/internal/bundled"
+ 	"github.com/microsoft/typescript-go/internal/core"
+ 	"github.com/microsoft/typescript-go/internal/lsp"
+ 	"github.com/microsoft/typescript-go/internal/pprof"
++	"github.com/microsoft/typescript-go/internal/project"
+ 	"github.com/microsoft/typescript-go/internal/tspath"
+ 	"github.com/microsoft/typescript-go/internal/vfs/osvfs"
+ )
+@@ -46,6 +48,8 @@ func runLSP(args []string) int {
+ 	typingsLocation := getGlobalTypingsCacheLocation()
+ 
+ 	s := lsp.NewServer(&lsp.ServerOptions{
++		GolarCallbacks: golar.GolarExtCallbacks,
++
+ 		In:                 lsp.ToReader(os.Stdin),
+ 		Out:                lsp.ToWriter(os.Stdout),
+ 		Err:                os.Stderr,
+@@ -58,6 +62,11 @@ func runLSP(args []string) int {
+ 			cmd.Dir = cwd
+ 			return cmd.Output()
+ 		},
++		ParseCache: &project.ParseCache{
++			Options: project.ParseCacheOptions{
++				GolarCallbacks: golar.GolarExtCallbacks,
++			},
++		},
+ 	})
+ 
+ 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+diff --git a/cmd/tsgo/sys.go b/cmd/tsgo/sys.go
+index e5b2b8d56..fd4bafee6 100644
+--- a/cmd/tsgo/sys.go
++++ b/cmd/tsgo/sys.go
+@@ -6,8 +6,10 @@ import (
+ 	"os"
+ 	"time"
+ 
++	"github.com/auvred/golar/golar"
+ 	"github.com/microsoft/typescript-go/internal/bundled"
+ 	"github.com/microsoft/typescript-go/internal/execute/tsc"
++	"github.com/microsoft/typescript-go/internal/golarext"
+ 	"github.com/microsoft/typescript-go/internal/tspath"
+ 	"github.com/microsoft/typescript-go/internal/vfs"
+ 	"github.com/microsoft/typescript-go/internal/vfs/osvfs"
+@@ -59,6 +61,10 @@ func (s *osSys) GetEnvironmentVariable(name string) string {
+ 	return os.Getenv(name)
+ }
+ 
++func (s *osSys) GetGolarCallbacks() *golarext.GolarCallbacks {
++	return golar.GolarExtCallbacks
++}
++
+ func newSystem() *osSys {
+ 	cwd, err := os.Getwd()
+ 	if err != nil {
+diff --git a/internal/ast/ast.go b/internal/ast/ast.go
+index d1d6d62a0..a39a9981b 100644
+--- a/internal/ast/ast.go
++++ b/internal/ast/ast.go
+@@ -10783,6 +10783,8 @@ type SourceFile struct {
+ 	tokenCache       map[core.TextRange]*Node
+ 	declarationMapMu sync.Mutex
+ 	declarationMap   map[string][]*Node
++
++	GolarLanguageData any
+ }
+ 
+ func (f *NodeFactory) NewSourceFile(opts SourceFileParseOptions, text string, statements *NodeList, endOfFileToken *TokenNode) *Node {
+diff --git a/internal/core/core.go b/internal/core/core.go
+index 6c075d488..1bb112208 100644
+--- a/internal/core/core.go
++++ b/internal/core/core.go
+@@ -446,7 +446,7 @@ func GetScriptKindFromFileName(fileName string) ScriptKind {
+ 			return ScriptKindJS
+ 		case tspath.ExtensionJsx:
+ 			return ScriptKindJSX
+-		case tspath.ExtensionTs, tspath.ExtensionCts, tspath.ExtensionMts:
++		case tspath.ExtensionTs, tspath.ExtensionCts, tspath.ExtensionMts, ".vue":
+ 			return ScriptKindTS
+ 		case tspath.ExtensionTsx:
+ 			return ScriptKindTSX
+diff --git a/internal/execute/tsc.go b/internal/execute/tsc.go
+index e314f4433..9a924b5f6 100644
+--- a/internal/execute/tsc.go
++++ b/internal/execute/tsc.go
+@@ -307,6 +307,7 @@ func performCompilation(
+ 	testing tsc.CommandLineTesting,
+ ) tsc.CommandLineResult {
+ 	host := compiler.NewCachedFSCompilerHost(sys.GetCurrentDirectory(), sys.FS(), sys.DefaultLibraryPath(), extendedConfigCache, getTraceFromSys(sys, config.Locale(), testing))
++	host = sys.GetGolarCallbacks().WrapCompilerHost(host)
+ 	// todo: cache, statistics, tracing
+ 	parseStart := sys.Now()
+ 	program := compiler.NewProgram(compiler.ProgramOptions{
+diff --git a/internal/execute/tsc/compile.go b/internal/execute/tsc/compile.go
+index 4fdd27f7c..3f52f4511 100644
+--- a/internal/execute/tsc/compile.go
++++ b/internal/execute/tsc/compile.go
+@@ -9,12 +9,15 @@ import (
+ 	"github.com/microsoft/typescript-go/internal/compiler"
+ 	"github.com/microsoft/typescript-go/internal/diagnostics"
+ 	"github.com/microsoft/typescript-go/internal/execute/incremental"
++	"github.com/microsoft/typescript-go/internal/golarext"
+ 	"github.com/microsoft/typescript-go/internal/locale"
+ 	"github.com/microsoft/typescript-go/internal/tspath"
+ 	"github.com/microsoft/typescript-go/internal/vfs"
+ )
+ 
+ type System interface {
++	GetGolarCallbacks() *golarext.GolarCallbacks
++
+ 	Writer() io.Writer
+ 	FS() vfs.FS
+ 	DefaultLibraryPath() string
+diff --git a/internal/execute/tsc/diagnostics.go b/internal/execute/tsc/diagnostics.go
+index 5a3d752a0..0023b6f24 100644
+--- a/internal/execute/tsc/diagnostics.go
++++ b/internal/execute/tsc/diagnostics.go
+@@ -32,14 +32,15 @@ func CreateDiagnosticReporter(sys System, w io.Writer, locale locale.Locale, opt
+ 		return QuietDiagnosticReporter
+ 	}
+ 	formatOpts := getFormatOptsOfSys(sys, locale)
++	cbs := sys.GetGolarCallbacks()
+ 	if shouldBePretty(sys, options) {
+ 		return func(diagnostic *ast.Diagnostic) {
+-			diagnosticwriter.FormatDiagnosticWithColorAndContext(w, diagnosticwriter.WrapASTDiagnostic(diagnostic), formatOpts)
++			diagnosticwriter.FormatDiagnosticWithColorAndContext(w, cbs.WrapASTDiagnostic(diagnostic), formatOpts)
+ 			fmt.Fprint(w, formatOpts.NewLine)
+ 		}
+ 	}
+ 	return func(diagnostic *ast.Diagnostic) {
+-		diagnosticwriter.WriteFormatDiagnostic(w, diagnosticwriter.WrapASTDiagnostic(diagnostic), formatOpts)
++		diagnosticwriter.WriteFormatDiagnostic(w, cbs.WrapASTDiagnostic(diagnostic), formatOpts)
+ 	}
+ }
+ 
+diff --git a/internal/golarext/golarext.go b/internal/golarext/golarext.go
+new file mode 100644
+index 000000000..968b6008d
+--- /dev/null
++++ b/internal/golarext/golarext.go
+@@ -0,0 +1,17 @@
++package golarext
++
++import (
++	"github.com/microsoft/typescript-go/internal/ast"
++	"github.com/microsoft/typescript-go/internal/compiler"
++	"github.com/microsoft/typescript-go/internal/core"
++	"github.com/microsoft/typescript-go/internal/diagnosticwriter"
++)
++
++type GolarCallbacks struct {
++	AdjustDiagnostic  func(file *ast.SourceFile, diagnostic *ast.Diagnostic) *ast.Diagnostic
++	PositionToService func(file *ast.SourceFile, pos int) int
++	PositionToSource  func(file *ast.SourceFile, pos int) int
++	WrapCompilerHost  func(host compiler.CompilerHost) compiler.CompilerHost
++	WrapASTDiagnostic func(diagnostic *ast.Diagnostic) diagnosticwriter.Diagnostic
++	ParseSourceFile   func(opts ast.SourceFileParseOptions, sourceText string, scriptKind core.ScriptKind) *ast.SourceFile
++}
+diff --git a/internal/ls/diagnostics.go b/internal/ls/diagnostics.go
+index 52d65512e..3db04350c 100644
+--- a/internal/ls/diagnostics.go
++++ b/internal/ls/diagnostics.go
+@@ -20,6 +20,12 @@ func (l *LanguageService) ProvideDiagnostics(ctx context.Context, uri lsproto.Do
+ 	if program.Options().GetEmitDeclarations() {
+ 		diagnostics = append(diagnostics, program.GetDeclarationDiagnostics(ctx, file))
+ 	}
++	callbacks := l.host.GetGolarCallbacks()
++	for i, diagSlice := range diagnostics {
++		for j, diag := range diagSlice {
++			diagnostics[i][j] = callbacks.AdjustDiagnostic(file, diag)
++		}
++	}
+ 
+ 	return lsproto.RelatedFullDocumentDiagnosticReportOrUnchangedDocumentDiagnosticReport{
+ 		FullDocumentDiagnosticReport: &lsproto.RelatedFullDocumentDiagnosticReport{
+diff --git a/internal/ls/host.go b/internal/ls/host.go
+index 8f517b787..2bcb8215f 100644
+--- a/internal/ls/host.go
++++ b/internal/ls/host.go
+@@ -1,5 +1,7 @@
+ package ls
+ 
++import "github.com/microsoft/typescript-go/internal/golarext"
++
+ import (
+ 	"github.com/microsoft/typescript-go/internal/format"
+ 	"github.com/microsoft/typescript-go/internal/ls/lsconv"
+@@ -8,6 +10,8 @@ import (
+ )
+ 
+ type Host interface {
++	GetGolarCallbacks() *golarext.GolarCallbacks
++
+ 	UseCaseSensitiveFileNames() bool
+ 	ReadFile(path string) (contents string, ok bool)
+ 	Converters() *lsconv.Converters
+diff --git a/internal/ls/hover.go b/internal/ls/hover.go
+index 6c8c644ad..8cabf071f 100644
+--- a/internal/ls/hover.go
++++ b/internal/ls/hover.go
+@@ -24,7 +24,7 @@ func (l *LanguageService) ProvideHover(ctx context.Context, documentURI lsproto.
+ 	contentFormat := lsproto.PreferredMarkupKind(caps.TextDocument.Hover.ContentFormat)
+ 
+ 	program, file := l.getProgramAndFile(documentURI)
+-	node := astnav.GetTouchingPropertyName(file, int(l.converters.LineAndCharacterToPosition(file, position)))
++	node := astnav.GetTouchingPropertyName(file, l.host.GetGolarCallbacks().PositionToService(file, int(l.converters.LineAndCharacterToPosition(file, position))))
+ 	if node.Kind == ast.KindSourceFile {
+ 		// Avoid giving quickInfo for the sourceFile as a whole.
+ 		return lsproto.HoverOrNull{}, nil
+diff --git a/internal/ls/lsconv/converters.go b/internal/ls/lsconv/converters.go
+index 406d713f8..c12c635d9 100644
+--- a/internal/ls/lsconv/converters.go
++++ b/internal/ls/lsconv/converters.go
+@@ -66,7 +66,7 @@ func (c *Converters) ToLSPLocation(script Script, rng core.TextRange) lsproto.Lo
+ 
+ func LanguageKindToScriptKind(languageID lsproto.LanguageKind) core.ScriptKind {
+ 	switch languageID {
+-	case "typescript":
++	case "typescript", "vue":
+ 		return core.ScriptKindTS
+ 	case "typescriptreact":
+ 		return core.ScriptKindTSX
+diff --git a/internal/lsp/server.go b/internal/lsp/server.go
+index 87d031fb1..f42cc32b9 100644
+--- a/internal/lsp/server.go
++++ b/internal/lsp/server.go
+@@ -1,5 +1,7 @@
+ package lsp
+ 
++import "github.com/microsoft/typescript-go/internal/golarext"
++
+ import (
+ 	"context"
+ 	"errors"
+@@ -31,6 +33,8 @@ import (
+ )
+ 
+ type ServerOptions struct {
++	GolarCallbacks *golarext.GolarCallbacks
++
+ 	In  Reader
+ 	Out Writer
+ 	Err io.Writer
+@@ -58,6 +62,8 @@ func NewServer(opts *ServerOptions) *Server {
+ 		logger = logging.NewLogger(opts.Err)
+ 	}
+ 	return &Server{
++		golarCallbacks: opts.GolarCallbacks,
++
+ 		r:                     opts.In,
+ 		w:                     opts.Out,
+ 		stderr:                opts.Err,
+@@ -139,6 +145,8 @@ var (
+ )
+ 
+ type Server struct {
++	golarCallbacks *golarext.GolarCallbacks
++
+ 	r Reader
+ 	w Writer
+ 
+@@ -1038,6 +1046,8 @@ func (s *Server) handleInitialized(ctx context.Context, params *lsproto.Initiali
+ 
+ 	s.session = project.NewSession(&project.SessionInit{
+ 		Options: &project.SessionOptions{
++			GolarCallbacks: s.golarCallbacks,
++
+ 			CurrentDirectory:       cwd,
+ 			DefaultLibraryPath:     s.defaultLibraryPath,
+ 			TypingsLocation:        s.typingsLocation,
+diff --git a/internal/module/resolver.go b/internal/module/resolver.go
+index 2b6612d62..493d7c14c 100644
+--- a/internal/module/resolver.go
++++ b/internal/module/resolver.go
+@@ -1429,6 +1429,11 @@ func (r *resolutionState) tryAddingExtensions(extensionless string, extensions e
+ 			}
+ 		}
+ 		return continueSearching()
++	case ".vue":
++		if resolved := r.tryExtension(".vue", extensionless, false, onlyRecordFailures); !resolved.shouldContinueSearching() {
++			return resolved
++		}
++		return continueSearching()
+ 	case tspath.ExtensionTs, tspath.ExtensionDts, tspath.ExtensionJs, "":
+ 		if extensions&extensionsTypeScript != 0 {
+ 			if resolved := r.tryExtension(tspath.ExtensionTs, extensionless, originalExtension == tspath.ExtensionTs || originalExtension == tspath.ExtensionDts, onlyRecordFailures); !resolved.shouldContinueSearching() {
+diff --git a/internal/module/util.go b/internal/module/util.go
+index 04f75150f..4c5f8fa86 100644
+--- a/internal/module/util.go
++++ b/internal/module/util.go
+@@ -135,7 +135,7 @@ func GetResolutionDiagnostic(options *core.CompilerOptions, resolvedModule *Reso
+ 	switch resolvedModule.Extension {
+ 	case tspath.ExtensionTs, tspath.ExtensionDts,
+ 		tspath.ExtensionMts, tspath.ExtensionDmts,
+-		tspath.ExtensionCts, tspath.ExtensionDcts:
++		tspath.ExtensionCts, tspath.ExtensionDcts, ".vue":
+ 		// These are always allowed.
+ 		return nil
+ 	case tspath.ExtensionTsx:
+diff --git a/internal/project/parsecache.go b/internal/project/parsecache.go
+index 48ccf8a9e..628e80881 100644
+--- a/internal/project/parsecache.go
++++ b/internal/project/parsecache.go
+@@ -3,6 +3,8 @@ package project
+ import (
+ 	"sync"
+ 
++	"github.com/microsoft/typescript-go/internal/golarext"
++
+ 	"github.com/microsoft/typescript-go/internal/ast"
+ 	"github.com/microsoft/typescript-go/internal/collections"
+ 	"github.com/microsoft/typescript-go/internal/core"
+@@ -33,6 +35,7 @@ type parseCacheEntry struct {
+ }
+ 
+ type ParseCacheOptions struct {
++	GolarCallbacks *golarext.GolarCallbacks
+ 	// DisableDeletion prevents entries from being removed from the cache.
+ 	// Used for testing.
+ 	DisableDeletion bool
+@@ -53,7 +56,11 @@ func (c *ParseCache) Acquire(
+ 	defer entry.mu.Unlock()
+ 	if !loaded || entry.hash != fh.Hash() {
+ 		// Reparse the file if the hash has changed, or parse for the first time.
+-		entry.sourceFile = parser.ParseSourceFile(opts, fh.Content(), scriptKind)
++		if c.Options.GolarCallbacks == nil {
++			entry.sourceFile = parser.ParseSourceFile(opts, fh.Content(), scriptKind)
++		} else {
++			entry.sourceFile = c.Options.GolarCallbacks.ParseSourceFile(opts, fh.Content(), scriptKind)
++		}
+ 		entry.hash = fh.Hash()
+ 	}
+ 	return entry.sourceFile
+diff --git a/internal/project/session.go b/internal/project/session.go
+index 84ecdc3d6..ee008aee7 100644
+--- a/internal/project/session.go
++++ b/internal/project/session.go
+@@ -1,5 +1,7 @@
+ package project
+ 
++import "github.com/microsoft/typescript-go/internal/golarext"
++
+ import (
+ 	"context"
+ 	"fmt"
+@@ -41,6 +43,8 @@ const (
+ // SessionOptions are the immutable initialization options for a session.
+ // Snapshots may reference them as a pointer since they never change.
+ type SessionOptions struct {
++	GolarCallbacks *golarext.GolarCallbacks
++
+ 	CurrentDirectory       string
+ 	DefaultLibraryPath     string
+ 	TypingsLocation        string
+diff --git a/internal/project/snapshot.go b/internal/project/snapshot.go
+index 9b4afbfa3..ef838d8e5 100644
+--- a/internal/project/snapshot.go
++++ b/internal/project/snapshot.go
+@@ -1,5 +1,7 @@
+ package project
+ 
++import "github.com/microsoft/typescript-go/internal/golarext"
++
+ import (
+ 	"context"
+ 	"fmt"
+@@ -43,6 +45,10 @@ type Snapshot struct {
+ 	apiError    error
+ }
+ 
++func (s *Snapshot) GetGolarCallbacks() *golarext.GolarCallbacks {
++	return s.sessionOptions.GolarCallbacks
++}
++
+ // NewSnapshot
+ func NewSnapshot(
+ 	id uint64,
+diff --git a/internal/tspath/extension.go b/internal/tspath/extension.go
+index 1b4422e79..07f436c30 100644
+--- a/internal/tspath/extension.go
++++ b/internal/tspath/extension.go
+@@ -26,9 +26,9 @@ var (
+ 	supportedDeclarationExtensions                 = []string{ExtensionDts, ExtensionDcts, ExtensionDmts}
+ 	supportedTSImplementationExtensions            = []string{ExtensionTs, ExtensionTsx, ExtensionMts, ExtensionCts}
+ 	supportedTSExtensionsForExtractExtension       = []string{ExtensionDts, ExtensionDcts, ExtensionDmts, ExtensionTs, ExtensionTsx, ExtensionMts, ExtensionCts}
+-	AllSupportedExtensions                         = [][]string{{ExtensionTs, ExtensionTsx, ExtensionDts, ExtensionJs, ExtensionJsx}, {ExtensionCts, ExtensionDcts, ExtensionCjs}, {ExtensionMts, ExtensionDmts, ExtensionMjs}}
+-	SupportedTSExtensions                          = [][]string{{ExtensionTs, ExtensionTsx, ExtensionDts}, {ExtensionCts, ExtensionDcts}, {ExtensionMts, ExtensionDmts}}
+-	SupportedTSExtensionsFlat                      = []string{ExtensionTs, ExtensionTsx, ExtensionDts, ExtensionCts, ExtensionDcts, ExtensionMts, ExtensionDmts}
++	AllSupportedExtensions                         = [][]string{{ExtensionTs, ExtensionTsx, ExtensionDts, ExtensionJs, ExtensionJsx, ".vue"}, {ExtensionCts, ExtensionDcts, ExtensionCjs}, {ExtensionMts, ExtensionDmts, ExtensionMjs}}
++	SupportedTSExtensions                          = [][]string{{ExtensionTs, ExtensionTsx, ExtensionDts, ".vue"}, {ExtensionCts, ExtensionDcts}, {ExtensionMts, ExtensionDmts}}
++	SupportedTSExtensionsFlat                      = []string{ExtensionTs, ExtensionTsx, ExtensionDts, ExtensionCts, ExtensionDcts, ExtensionMts, ExtensionDmts, ".vue"}
+ 	SupportedJSExtensions                          = [][]string{{ExtensionJs, ExtensionJsx}, {ExtensionMjs}, {ExtensionCjs}}
+ 	SupportedJSExtensionsFlat                      = []string{ExtensionJs, ExtensionJsx, ExtensionMjs, ExtensionCjs}
+ 	AllSupportedExtensionsWithJson                 = slices.Concat(AllSupportedExtensions, [][]string{{ExtensionJson}})
+-- 
+2.51.0
+

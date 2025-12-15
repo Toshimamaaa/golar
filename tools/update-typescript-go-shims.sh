@@ -2,7 +2,7 @@
 
 pushd typescript-go
 TSGO_COMMIT="$(git rev-parse HEAD)"
-# git am --3way --no-gpg-sign ../patches/*.patch
+git am --3way --no-gpg-sign ../patches/*.patch
 popd
 
 go work sync

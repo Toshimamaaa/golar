@@ -3,7 +3,7 @@ package vue_codegen
 import (
 	"strings"
 
-	"github.com/auvred/golar/vue/ast"
+	"github.com/auvred/golar/internal/vue/ast"
 	"github.com/microsoft/typescript-go/shim/ast"
 	"github.com/microsoft/typescript-go/shim/core"
 )
@@ -171,6 +171,8 @@ func  generateScriptSetup(c *codegenCtx, el *vue_ast.ElementNode) {
 		c.serviceText.WriteString("...{} as __VLS_SetupExposed,\n")
 	}
 	c.serviceText.WriteString("}\n")
+
+	c.serviceText.WriteString("export default {} as import('vue').Component\n")
 }
 
 type templateCodegenCtx struct {

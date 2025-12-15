@@ -1,4 +1,4 @@
-package parser
+package vue_parser
 
 import (
 	"slices"
@@ -7,7 +7,11 @@ import (
 	"unicode/utf8"
 
 	"github.com/auvred/golar/vue/ast"
+
+	"github.com/microsoft/typescript-go/shim/tspath"
+	"github.com/microsoft/typescript-go/shim/ast"
 	"github.com/microsoft/typescript-go/shim/core"
+	"github.com/microsoft/typescript-go/shim/parser"
 )
 
 type ParseError struct {
@@ -17,26 +21,26 @@ type ParseError struct {
 
 type Parser struct {
 // let currentOptions: MergedParserOptions = defaultParserOptions
-	currentRoot *ast.RootNode
+	currentRoot *vue_ast.RootNode
 
 	// parser state
 	sourceText string
-	currentOpenTag *ast.ElementNode
-	currentProp *ast.Node // AttributeNode | DirectiveNode | null = null
+	currentOpenTag *vue_ast.ElementNode
+	currentProp *vue_ast.Node // AttributeNode | DirectiveNode | null = null
 	currentAttrValue string
 	currentAttrStartIndex int //= -1
 	currentAttrEndIndex int //= -1
 	inPre int
 	inVPre bool
-	currentVPreBoundary *ast.ElementNode
+	currentVPreBoundary *vue_ast.ElementNode
 	// TODO(perf): why stack is prepended???
-	stack []*ast.ElementNode
+	stack []*vue_ast.ElementNode
 	tokenizer *Tokenizer
 
 	errors []ParseError
 }
 
-func Parse(source string) *ast.RootNode {
+func Parse(source string) *vue_ast.RootNode {
 	p := Parser{
 		tokenizer: NewTokenizer(source),
 		sourceText: source,
@@ -44,7 +48,7 @@ func Parse(source string) *ast.RootNode {
 		currentAttrEndIndex: -1,
 	}
 	p.tokenizer.parser = &p
-	p.currentRoot = ast.NewRootNode()
+	p.currentRoot = vue_ast.NewRootNode()
 	p.tokenizer.parse()
 	return p.currentRoot
 }
@@ -54,7 +58,7 @@ func (p *Parser) emitError(msg string, pos int) {
 }
 
 
-func (p *Parser) addNode(node *ast.Node) {
+func (p *Parser) addNode(node *vue_ast.Node) {
 	if len(p.stack) > 0 {
 		p.stack[0].Children = append(p.stack[0].Children, node)
 	} else {
@@ -80,21 +84,21 @@ func (p *Parser) oninterpolation (start int, end int) {
 	}
 	innerStart := start + len(p.tokenizer.delimiterOpen)
 	innerEnd := end - len(p.tokenizer.delimiterClose)
-	for {
-		r, size := utf8.DecodeRuneInString(p.sourceText[innerStart:])
-		if !isWhitespace(r) {
-			break
-		}
-		innerStart += size
-	}
-	for {
-		r, size := utf8.DecodeLastRuneInString(p.sourceText[:innerEnd])
-		if !isWhitespace(r) {
-			break
-		}
-		innerEnd -= size
-	}
-	exp := p.sourceText[innerStart:innerEnd]
+	// for {
+	// 	r, size := utf8.DecodeRuneInString(p.sourceText[innerStart:])
+	// 	if !isWhitespace(r) {
+	// 		break
+	// 	}
+	// 	innerStart += size
+	// }
+	// for {
+	// 	r, size := utf8.DecodeLastRuneInString(p.sourceText[:innerEnd])
+	// 	if !isWhitespace(r) {
+	// 		break
+	// 	}
+	// 	innerEnd -= size
+	// }
+	expContent := p.sourceText[innerStart:innerEnd]
 	// decode entities for backwards compat
 	// TODO:
 	// if exp.includes("&") {
@@ -104,20 +108,21 @@ func (p *Parser) oninterpolation (start int, end int) {
 	// 		exp = decodeHTML(exp)
 	// 	}
 	// }
-	p.addNode(ast.NewInterpolationNode(
+
+	exp := vue_ast.NewSimpleExpressionNode(expContent, parseTsAst(expContent), core.NewTextRange(innerStart, innerEnd))
+
+	p.addNode(vue_ast.NewInterpolationNode(
 		exp,
-		// TODO
-		// content: createExp(exp, false, getLoc(innerStart, innerEnd)),
 		core.NewTextRange(start, end),
 	).AsNode())
 }
 
 func (p *Parser) onopentagname (start int, end int) {
 	name := p.sourceText[start:end]
-	p.currentOpenTag = ast.NewElementNode(
+	p.currentOpenTag = vue_ast.NewElementNode(
 		// TODO: do we need to support namespaces?
 		// currentOptions.getNamespace(name, stack[0], currentOptions.ns),
-		ast.NamespaceHTML,
+		vue_ast.NamespaceHTML,
 		name,
 		core.NewTextRange(start - 1, end),
 	)
@@ -130,19 +135,17 @@ func isPreTag(tag string) bool {
 
 func (p *Parser) onopentagend (end int) {
 	if p.tokenizer.inSFCRoot() {
-		// TODO:
-		// in SFC mode, generate locations for root-level tags' inner content.
-		// currentOpenTag!.innerLoc = getLoc(end + 1, end + 1)
+		p.currentOpenTag.InnerLoc = core.NewTextRange(end + 1, end + 1)
 	}
 	p.addNode(p.currentOpenTag.AsNode())
-	if p.currentOpenTag.Ns == ast.NamespaceHTML && isPreTag(p.currentOpenTag.Tag) {
+	if p.currentOpenTag.Ns == vue_ast.NamespaceHTML && isPreTag(p.currentOpenTag.Tag) {
 		p.inPre++
 	}
 	if _, ok := VOID_TAGS[p.currentOpenTag.Tag]; ok {
 		p.onCloseTag(p.currentOpenTag, end, false)
 	} else {
 		p.stack = slices.Insert(p.stack, 0, p.currentOpenTag)
-		if p.currentOpenTag.Ns == ast.NamespaceSVG || p.currentOpenTag.Ns == ast.NamespaceMATH_ML {
+		if p.currentOpenTag.Ns == vue_ast.NamespaceSVG || p.currentOpenTag.Ns == vue_ast.NamespaceMATH_ML {
 			p.tokenizer.inXML = true
 		}
 	}
@@ -186,7 +189,7 @@ func (p *Parser) onselfclosingtag (end int) {
 
 func (p *Parser) onattribname (start int, end int) {
 	// plain attribute
-	p.currentProp = ast.NewAttributeNode(
+	p.currentProp = vue_ast.NewAttributeNode(
 		p.sourceText[start:end],
 		core.NewTextRange(start, end),
 		core.NewTextRange(start, -1),
@@ -211,13 +214,13 @@ func (p *Parser) ondirname (start int, end int) {
 	}
 
 	if p.inVPre || name == "" {
-		p.currentProp = ast.NewAttributeNode(
+		p.currentProp = vue_ast.NewAttributeNode(
 			raw,
 			core.NewTextRange(start, end),
 			core.NewTextRange(start, -1),
 		).AsNode()
 	} else {
-		p.currentProp = ast.NewDirectiveNode(
+		p.currentProp = vue_ast.NewDirectiveNode(
 			name,
 			raw,
 			// TODO:
@@ -232,7 +235,7 @@ func (p *Parser) ondirname (start int, end int) {
 			// TODO:
 			// props := currentOpenTag.props
 			// for i := 0; i < len(props); i++ {
-			// 	if props[i].type == ast.NodeTypeDIRECTIVE {
+			// 	if props[i].type == vue_ast.NodeTypeDIRECTIVE {
 			// 		props[i] = dirToAttr(props[i] as DirectiveNode)
 			// 	}
 			// }
@@ -240,8 +243,8 @@ func (p *Parser) ondirname (start int, end int) {
 	}
 }
 
-func isVPre(p *ast.Node) bool  {
-	return p.Type == ast.NodeTypeDIRECTIVE && p.AsDirective().Name == "pre"
+func isVPre(p *vue_ast.Node) bool  {
+	return p.Type == vue_ast.NodeTypeDIRECTIVE && p.AsDirective().Name == "pre"
 }
 
 
@@ -310,13 +313,13 @@ func (p *Parser) onattribentity (char string, start int, end int) {
 func (p *Parser) onattribnameend (end int) {
 	start := p.currentProp.Loc.Pos()
 	name := p.sourceText[start:end]
-	if p.currentProp.Type == ast.NodeTypeDIRECTIVE {
+	if p.currentProp.Type == vue_ast.NodeTypeDIRECTIVE {
 		p.currentProp.AsDirective().RawName = name
 	}
 	// check duplicate attrs
 	// TODO:
 	// if 	// 	currentOpenTag!.props.some(
-	// 		p => (p.type == ast.NodeTypeDIRECTIVE ? p.rawName : p.name) == name,
+	// 		p => (p.type == vue_ast.NodeTypeDIRECTIVE ? p.rawName : p.name) == name,
 	// 	)
 	//  {
 	// 	emitError(ErrorCodes.DUPLICATE_ATTRIBUTE, start)
@@ -329,7 +332,7 @@ func (p *Parser) onattribend (quote QuoteType, end int) {
 		p.currentProp.Loc = p.currentProp.Loc.WithEnd(end)
 
 		if quote != QuoteTypeNoValue {
-			if p.currentProp.Type == ast.NodeTypeATTRIBUTE {
+			if p.currentProp.Type == vue_ast.NodeTypeATTRIBUTE {
 				// assign value
 
 				prop := p.currentProp.AsAttribute()
@@ -343,7 +346,7 @@ func (p *Parser) onattribend (quote QuoteType, end int) {
 					p.emitError("Missing attribute value", end)
 				}
 
-				prop.Value = ast.NewTextNode(
+				prop.Value = vue_ast.NewTextNode(
 					p.currentAttrValue,
 					core.NewTextRange(p.currentAttrStartIndex, p.currentAttrEndIndex),
 				)
@@ -403,11 +406,10 @@ func (p *Parser) onattribend (quote QuoteType, end int) {
 				// }
 			}
 		}
-		// TODO:
-		// if currentProp.Type != ast.NodeTypeDIRECTIVE ||
-		// 	currentProp.name != "pre" {
-		// 	currentOpenTag.props.push(currentProp)
-		// }
+		if p.currentProp.Type != vue_ast.NodeTypeDIRECTIVE ||
+			p.currentProp.AsDirective().Name != "pre" {
+			p.currentOpenTag.Props = append(p.currentOpenTag.Props, p.currentProp)
+		}
 	}
 	p.currentAttrValue = ""
 	p.currentAttrStartIndex = -1
@@ -415,7 +417,7 @@ func (p *Parser) onattribend (quote QuoteType, end int) {
 }
 
 func (p *Parser) oncomment (start int, end int) {
-	p.addNode(ast.NewCommentNode(
+	p.addNode(vue_ast.NewCommentNode(
 		p.sourceText[start:end],
 		core.NewTextRange(start - 4, end + 3),
 	).AsNode())
@@ -472,7 +474,7 @@ func (p *Parser) onend () {
 }
 
 func (p *Parser) oncdata (start int, end int) {
-	if len(p.stack) > 0 && p.stack[0].Ns != ast.NamespaceHTML {
+	if len(p.stack) > 0 && p.stack[0].Ns != vue_ast.NamespaceHTML {
 		p.onText(p.sourceText[start:end], start, end)
 	} else {
 		p.emitError("CDATA in HTML content", start - 9)
@@ -481,11 +483,11 @@ func (p *Parser) oncdata (start int, end int) {
 
 func (p *Parser) onprocessinginstruction (start int, endIndex int) {
 	// ignore as we do not have runtime handling for this, only check error
-	ns := ast.NamespaceHTML // currentOptions.ns
+	ns := vue_ast.NamespaceHTML // currentOptions.ns
 	if len(p.stack) > 0 {
 		ns = p.stack[0].Ns
 	}
-	if ns == ast.NamespaceHTML {
+	if ns == vue_ast.NamespaceHTML {
 		p.emitError(
 			"Unexpected question mark instead of tag name",
 			start - 1,
@@ -576,13 +578,13 @@ func (p *Parser) onText(content string, start, end int) {
 	if len(p.stack) > 0 {
 		children = p.stack[0].Children
 	}
-	if len(children) > 0 && children[len(children) - 1].Type == ast.NodeTypeTEXT {
+	if len(children) > 0 && children[len(children) - 1].Type == vue_ast.NodeTypeTEXT {
 		lastNode := children[len(children) - 1].AsText()
 		// merge
 		lastNode.Content += content
 		lastNode.Loc = lastNode.Loc.WithEnd(end)
 	} else {
-		n := ast.NewTextNode(
+		n := vue_ast.NewTextNode(
 			content,
 			core.NewTextRange(start, end),
 		).AsNode()
@@ -594,7 +596,7 @@ func (p *Parser) onText(content string, start, end int) {
 	}
 }
 
-func (p *Parser) onCloseTag(el *ast.ElementNode, end int, isImplied bool) {
+func (p *Parser) onCloseTag(el *vue_ast.ElementNode, end int, isImplied bool) {
 	// attach end position
 	if isImplied {
 		// implied close, end should be backtracked to close
@@ -604,14 +606,16 @@ func (p *Parser) onCloseTag(el *ast.ElementNode, end int, isImplied bool) {
 	}
 
 	if p.tokenizer.inSFCRoot() {
-		// TODO:
-		// SFC root tag, resolve inner end
-		// if len(el.children) {
-		// 	el.innerLoc!.end = extend({}, len(el.children[el.children) - 1].loc.end)
-		// } else {
-		// 	el.innerLoc!.end = extend({}, el.innerLoc!.start)
-		// }
-		// el.innerLoc!.source = p.sourceText[el.innerLoc!.start.offset:el.innerLoc!.end.offset]
+		if len(el.Children) > 0 {
+			el.InnerLoc = el.InnerLoc.WithEnd(el.Children[len(el.Children) - 1].Loc.End())
+			if el.Tag == "script" {
+				if len(el.Children) != 1 {
+					panic("assertion failed: <script> has more than 1 child")
+				}
+				content := p.sourceText[el.Children[0].Loc.Pos():el.Children[0].Loc.End()]
+				el.Ast = parseTsAst(content)
+			}
+		}
 	}
 
 	// refine element type
@@ -619,11 +623,11 @@ func (p *Parser) onCloseTag(el *ast.ElementNode, end int, isImplied bool) {
 	if !p.inVPre {
 		// TODO: do we need it?
 		// if el.Tag == "slot" {
-		// 	el.TagType = ast.ElementTypeSLOT
+		// 	el.TagType = vue_ast.ElementTypeSLOT
 		// } else if isFragmentTemplate(el) {
-		// 	el.TagType = ast.ElementTypeTEMPLATE
+		// 	el.TagType = vue_ast.ElementTypeTEMPLATE
 		// } else if isComponent(el) {
-		// 	el.TagType = ast.ElementTypeCOMPONENT
+		// 	el.TagType = vue_ast.ElementTypeCOMPONENT
 		// }
 	}
 
@@ -634,11 +638,11 @@ func (p *Parser) onCloseTag(el *ast.ElementNode, end int, isImplied bool) {
 	}
 
 	// TODO:
-	// if ns == ast.NamespaceHTML && currentOptions.isIgnoreNewlineTag(tag) {
+	// if ns == vue_ast.NamespaceHTML && currentOptions.isIgnoreNewlineTag(tag) {
 	// 	// remove leading newline for <textarea> and <pre> per html spec
 	// 	// https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inbody
 	// 	first := children[0]
-	// 	if first && first.Type == ast.NodeTypeTEXT {
+	// 	if first && first.Type == vue_ast.NodeTypeTEXT {
 	// 		// TODO:
 	// 		// first.content = first.content.replace(/^\r?\n/, "")
 	// 	}
@@ -657,7 +661,7 @@ func (p *Parser) onCloseTag(el *ast.ElementNode, end int, isImplied bool) {
 	// if len(p.stack) > 0 {
 	// 	ns = stack[0].Ns
 	// }
-	// if tokenizer.inXML && ns == ast.NamespaceHTML {
+	// if tokenizer.inXML && ns == vue_ast.NamespaceHTML {
 	// 	tokenizer.inXML = false
 	// }
 }
@@ -692,7 +696,7 @@ func isUpperCase(c rune) bool {
 // 	removedWhitespace := false
 // 	for i := 0; i < len(nodes); i++ {
 // 		node := nodes[i]
-// 		if node.type == ast.NodeTypeTEXT {
+// 		if node.type == vue_ast.NodeTypeTEXT {
 // 			if !inPre {
 // 				if isAllWhitespace(node.content) {
 // 					prev := nodes[i - 1] && nodes[i - 1].type
@@ -705,11 +709,11 @@ func isUpperCase(c rune) bool {
 // 					if !prev ||
 // 						!next ||
 // 						(shouldCondense &&
-// 							((prev == ast.NodeTypeCOMMENT &&
-// 								(next == ast.NodeTypeCOMMENT || next == ast.NodeTypeELEMENT)) ||
-// 								(prev == ast.NodeTypeELEMENT &&
-// 									(next == ast.NodeTypeCOMMENT ||
-// 										(next == ast.NodeTypeELEMENT &&
+// 							((prev == vue_ast.NodeTypeCOMMENT &&
+// 								(next == vue_ast.NodeTypeCOMMENT || next == vue_ast.NodeTypeELEMENT)) ||
+// 								(prev == vue_ast.NodeTypeELEMENT &&
+// 									(next == vue_ast.NodeTypeCOMMENT ||
+// 										(next == vue_ast.NodeTypeELEMENT &&
 // 											hasNewlineChar(node.content)))))) {
 // 						removedWhitespace = true
 // 						nodes[i] = null as any
@@ -764,7 +768,7 @@ func condense(s string) string {
 
 // function dirToAttr(dir: DirectiveNode): AttributeNode {
 // 	attr: AttributeNode := {
-// 		type: ast.NodeTypeATTRIBUTE,
+// 		type: vue_ast.NodeTypeATTRIBUTE,
 // 		name: dir.rawName!,
 // 		nameLoc: getLoc(
 // 			dir.loc.start.offset,
@@ -783,7 +787,7 @@ func condense(s string) string {
 // 			loc.end.column++
 // 		}
 // 		attr.value = {
-// 			type: ast.NodeTypeTEXT,
+// 			type: vue_ast.NodeTypeTEXT,
 // 			content: (dir.exp as SimpleExpressionNode).content,
 // 			loc,
 // 		}
@@ -812,7 +816,7 @@ func condense(s string) string {
 // 		parseMode != ExpParseMode.Skip &&
 // 		content.trim() {
 // 		if isSimpleIdentifier(content) {
-// 			exp.ast = null // fast path
+// 			exp.vue_ast = null // fast path
 // 			return exp
 // 		}
 // 		try {
@@ -822,15 +826,15 @@ func condense(s string) string {
 // 			}
 // 			if parseMode == ExpParseMode.Statements {
 // 				// v-on with multi-inline-statements, pad 1 char
-// 				exp.ast = parse(` ${content} `, options).program
+// 				exp.vue_ast = parse(` ${content} `, options).program
 // 			} else if parseMode == ExpParseMode.Params {
-// 				exp.ast = parseExpression(`(${content})=>{}`, options)
+// 				exp.vue_ast = parseExpression(`(${content})=>{}`, options)
 // 			} else {
 // 				// normal exp, wrap with parens
-// 				exp.ast = parseExpression(`(${content})`, options)
+// 				exp.vue_ast = parseExpression(`(${content})`, options)
 // 			}
 // 		} catch (e: any) {
-// 			exp.ast = false // indicate an error
+// 			exp.vue_ast = false // indicate an error
 // 			emitError(ErrorCodes.X_INVALID_EXPRESSION, loc.start.offset, e.message)
 // 		}
 // 	}
@@ -1159,3 +1163,16 @@ VOID_TAGS = map[string]struct{}{
 }
 )
 
+func parseTsAst(source string) *ast.SourceFile {
+	return parser.ParseSourceFile(ast.SourceFileParseOptions{
+		FileName: "/virtual.tsx",
+		Path: tspath.Path("/virtual.tsx"),
+		CompilerOptions: core.SourceFileAffectingCompilerOptions{
+			BindInStrictMode: true,
+		},
+		ExternalModuleIndicatorOptions: ast.ExternalModuleIndicatorOptions{
+			Force: true,
+		},
+		JSDocParsingMode: ast.JSDocParsingModeParseAll,
+	}, source, core.ScriptKindTSX) // TODO: script kind
+}

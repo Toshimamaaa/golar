@@ -1,4 +1,4 @@
-package parser
+package vue_parser
 
 import "unicode/utf8"
 
@@ -282,7 +282,7 @@ func (t *Tokenizer) inSFCRoot() bool {
 func NewTokenizer(source string) *Tokenizer {
 	return &Tokenizer{
 		state: StateText,
-		mode: ParseModeBase,
+		mode: ParseModeSfc,
 		buffer: source,
 		sectionStart: 0,
 		index: 0,

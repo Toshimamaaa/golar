@@ -1,6 +1,7 @@
-package ast
+package vue_ast
 
 import (
+	"github.com/microsoft/typescript-go/shim/ast"
 	"github.com/microsoft/typescript-go/shim/core"
 )
 
@@ -69,7 +70,10 @@ type ElementNode struct {
   Props []*Node // Array<AttributeNode | DirectiveNode>
   Children []*Node // TemplateChildNode[]
   IsSelfClosing bool
-  // innerLoc?: SourceLocation // only for SFC root level elements
+	// Only for <script>
+	Ast *ast.SourceFile
+	// Only for SFC root level elements
+	InnerLoc core.TextRange
 }
 
 func NewElementNode(ns Namespace, tag string, loc core.TextRange) *ElementNode {
@@ -78,7 +82,9 @@ func NewElementNode(ns Namespace, tag string, loc core.TextRange) *ElementNode {
 	return &data
 }
 
-// func NewElementNode(ns Namespace)
+type ScriptElementNode struct {
+	ElementNode
+}
 
 type TextNode struct {
 	Node
@@ -91,42 +97,19 @@ func NewTextNode(content string, loc core.TextRange) *TextNode {
 	return &data
 }
 
-/**
- * Static types have several levels.
- * Higher levels implies lower levels. e.g. a node that can be stringified
- * can always be hoisted and skipped for patch.
- */
-type ConstantType uint8
-
-const (
-  ConstantTypeNOT_CONSTANT ConstantType = iota
-  ConstantTypeCAN_SKIP_PATCH
-  ConstantTypeCAN_CACHE
-  ConstantTypeCAN_STRINGIFY
-)
-
 type SimpleExpressionNode struct {
 	Node
   Content string
-  IsStatic bool
-  ConstType ConstantType
-  /**
-   * - `null` means the expression is a simple identifier that doesn't need
-   *    parsing
-   * - `false` means there was a parsing error
-   */
-  // ast?: BabelNode | null | false
-  /**
-   * Indicates this is an identifier for a hoist vnode call and points to the
-   * hoisted node.
-   */
-  // hoisted?: JSChildNode
-  /**
-   * an expression parsed as the params of a function will track
-   * the identifiers declared inside the function body.
-   */
-  // identifiers?: string[]
+	// nil when expression is a simple identifier (static)
+	Ast *ast.SourceFile
+	// TODO
   // isHandlerKey?: boolean
+}
+
+func NewSimpleExpressionNode(content string, ast *ast.SourceFile, loc core.TextRange) *SimpleExpressionNode {
+	data := SimpleExpressionNode{Node: Node{Type: NodeTypeSIMPLE_EXPRESSION, Loc: loc}, Content: content, Ast: ast}
+	data.Node.data = &data
+	return &data
 }
 
 type CommentNode struct {
@@ -178,10 +161,10 @@ func NewDirectiveNode(name, rawName string, loc core.TextRange) *DirectiveNode {
 
 type InterpolationNode struct {
 	Node
-	Content string // TODO: *ExpressionNode
+	Content *SimpleExpressionNode
 }
 
-func NewInterpolationNode(content string, loc core.TextRange) *InterpolationNode {
+func NewInterpolationNode(content *SimpleExpressionNode, loc core.TextRange) *InterpolationNode {
 	data := InterpolationNode{Node: Node{Type: NodeTypeINTERPOLATION, Loc: loc}, Content: content}
 	data.Node.data = &data
 	return &data

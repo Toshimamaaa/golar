@@ -28,10 +28,13 @@ type ExtraShim struct {
 func main() {
 	packagesToShim := []string{
 		"ast",
+		"parser",
 		"bundled",
 		"checker",
 		"compiler",
 		"core",
+		"diagnosticwriter",
+		"golarext",
 		"lsp/lsproto",
 		"project",
 		"scanner",

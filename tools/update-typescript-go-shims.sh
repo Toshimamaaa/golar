@@ -1,9 +1,9 @@
 #!/usr/bin/env -S bash -euxo pipefail
 
-# pushd typescript-go
-# TSGO_COMMIT="$(git rev-parse HEAD)"
+pushd typescript-go
+TSGO_COMMIT="$(git rev-parse HEAD)"
 # git am --3way --no-gpg-sign ../patches/*.patch
-# popd
+popd
 
 go work sync
 

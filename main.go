@@ -12,7 +12,6 @@ import (
 )
 
 func getProgram(cwd string) (*compiler.Program, error) {
-
 	fs := bundled.WrapFS(cachedvfs.From(osvfs.FS()))
 	var configFileName string
 	var tsconfig string // TODO

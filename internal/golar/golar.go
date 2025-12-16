@@ -47,6 +47,10 @@ func (d *diagnosticProxy) RelatedInformation() []diagnosticwriter.Diagnostic {
 	related := d.Diagnostic.RelatedInformation()
 	result := []diagnosticwriter.Diagnostic{}
 	for _, r := range related {
+		if r.Code() >= 10_000 {
+			result = append(result, &diagnosticProxy{r})
+			continue
+		}
 		sourcePos := servicePosToSource(r.File(), r.Pos())
 		if sourcePos != -1 {
 			result = append(result, &diagnosticProxy{r})
@@ -101,6 +105,10 @@ func (d *diagnosticProxy) MessageChain() []diagnosticwriter.Diagnostic {
 	chain := d.Diagnostic.MessageChain()
 	result := []diagnosticwriter.Diagnostic{}
 	for _, r := range chain {
+		if r.Code() >= 10_000 {
+			result = append(result, &diagnosticProxy{r})
+			continue
+		}
 		sourcePos := servicePosToSource(r.File(), r.Pos())
 		if sourcePos != -1 {
 			result = append(result, &diagnosticProxy{r})
@@ -111,6 +119,9 @@ func (d *diagnosticProxy) MessageChain() []diagnosticwriter.Diagnostic {
 
 func (d *diagnosticProxy) Pos() int {
 	servicePos := d.Diagnostic.Pos()
+	if d.Code() >= 10_000 {
+		return servicePos
+	}
 	sourcePos := servicePosToSource(d.Diagnostic.File(), servicePos)
 	if sourcePos == -1 {
 		return servicePos
@@ -120,6 +131,9 @@ func (d *diagnosticProxy) Pos() int {
 
 func (d *diagnosticProxy) End() int {
 	servicePos := d.Diagnostic.End()
+	if d.Code() >= 10_000 {
+		return servicePos
+	}
 	sourcePos := servicePosToSource(d.Diagnostic.File(), servicePos)
 	if sourcePos == -1 {
 		return servicePos
@@ -148,8 +162,15 @@ func parseFile(opts ast.SourceFileParseOptions, sourceText string, scriptKind co
 		return parser.ParseSourceFile(opts, sourceText, scriptKind)
 	}
 	ast := vue_parser.Parse(sourceText)
-	serviceText, mappings := vue_codegen.Codegen(sourceText, ast)
+	serviceText, mappings, codegenDiagnostics := vue_codegen.Codegen(sourceText, ast)
 	file := parser.ParseSourceFile(opts, serviceText, scriptKind)
+	for _, d := range codegenDiagnostics {
+		d.SetFile(file)
+		for _, r := range d.RelatedInformation() {
+			r.SetFile(file)
+		}
+	}
+	file.SetDiagnostics(append(file.Diagnostics(), codegenDiagnostics...))
 	file.GolarLanguageData = languageData{
 		sourceText: sourceText,
 		mappings:   mappings,
@@ -159,7 +180,7 @@ func parseFile(opts ast.SourceFileParseOptions, sourceText string, scriptKind co
 }
 
 func adjustDiagnostic(file *ast.SourceFile, diagnostic *ast.Diagnostic) *ast.Diagnostic {
-	if file.GolarLanguageData == nil {
+	if file.GolarLanguageData == nil || diagnostic.Code() >= 10_000 {
 		return diagnostic
 	}
 

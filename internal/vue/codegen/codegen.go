@@ -4,8 +4,10 @@ import (
 	"strings"
 
 	"github.com/auvred/golar/internal/vue/ast"
+	vue_diagnostics "github.com/auvred/golar/internal/vue/diagnostics"
 	"github.com/microsoft/typescript-go/shim/ast"
 	"github.com/microsoft/typescript-go/shim/core"
+	"github.com/microsoft/typescript-go/shim/diagnostics"
 )
 
 type Mapping struct {
@@ -14,7 +16,7 @@ type Mapping struct {
 	Length int
 }
 
-func Codegen(sourceText string, root *vue_ast.RootNode) (string, []Mapping) {
+func Codegen(sourceText string, root *vue_ast.RootNode) (string, []Mapping, []*ast.Diagnostic) {
 	ctx := newCodegenCtx(root, sourceText)
 
 	var scriptSetupCtx *codegenCtx
@@ -31,9 +33,8 @@ func Codegen(sourceText string, root *vue_ast.RootNode) (string, []Mapping) {
 				if prop.Type == vue_ast.NodeTypeATTRIBUTE {
 					attr := prop.AsAttribute()
 					if attr.Name == "setup" {
-						// TODO: report setup attr value
 						if scriptSetupCtx != nil {
-							// TODO: report duplicate script setup
+							ctx.reportDiagnostic(el.Loc.WithEnd(el.InnerLoc.Pos()), vue_diagnostics.Single_file_component_can_contain_only_one_script_setup_element)
 							break
 						}
 						ctx := newCodegenCtx(root, sourceText)
@@ -46,7 +47,8 @@ func Codegen(sourceText string, root *vue_ast.RootNode) (string, []Mapping) {
 
 		if el.Tag == "template" {
 			if templateCtx != nil {
-				// TODO: report duplicate ctx
+				ctx.reportDiagnostic(el.Loc.WithEnd(el.InnerLoc.Pos()), vue_diagnostics.Single_file_component_can_contain_only_one_template_element)
+				continue
 			}
 			ctx := newCodegenCtx(root, sourceText)
 			templateCtx = &ctx
@@ -90,7 +92,7 @@ func Codegen(sourceText string, root *vue_ast.RootNode) (string, []Mapping) {
 		ctx.serviceText.Write([]byte(templateCtx.serviceText.String()))
 	}
 
-	return ctx.serviceText.String(), ctx.mappings
+	return ctx.serviceText.String(), ctx.mappings, ctx.diagnostics
 }
 
 type codegenCtx struct {
@@ -98,6 +100,7 @@ type codegenCtx struct {
 	sourceText string
 	serviceText strings.Builder
 	mappings []Mapping
+	diagnostics []*ast.Diagnostic
 }
 
 func newCodegenCtx(root *vue_ast.RootNode, sourceText string) codegenCtx {
@@ -106,7 +109,12 @@ func newCodegenCtx(root *vue_ast.RootNode, sourceText string) codegenCtx {
 		sourceText: sourceText,
 		serviceText: strings.Builder{},
 		mappings: []Mapping{},
+		diagnostics: []*ast.Diagnostic{},
 	}
+}
+
+func (c *codegenCtx) reportDiagnostic(loc core.TextRange, message *diagnostics.Message) {
+	c.diagnostics = append(c.diagnostics, ast.NewDiagnostic(nil, loc, message))
 }
 
 func (c *codegenCtx) mapText(from, to int) {

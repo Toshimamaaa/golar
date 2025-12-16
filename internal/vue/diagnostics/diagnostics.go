@@ -1,0 +1,18 @@
+package vue_diagnostics
+
+import "github.com/microsoft/typescript-go/shim/diagnostics"
+
+var Single_file_component_can_contain_only_one_script_setup_element = &diagnostics.Message{}
+var Single_file_component_can_contain_only_one_template_element = &diagnostics.Message{}
+
+func init() {
+	diagnostics.Message_Set_code(Single_file_component_can_contain_only_one_script_setup_element, 10_000)
+	diagnostics.Message_Set_category(Single_file_component_can_contain_only_one_script_setup_element, diagnostics.CategoryError)
+	diagnostics.Message_Set_key(Single_file_component_can_contain_only_one_script_setup_element, "Single_file_component_can_contain_only_one_script_setup_element")
+	diagnostics.Message_Set_text(Single_file_component_can_contain_only_one_script_setup_element, "Single file component can contain only one <script setup> element")
+
+	diagnostics.Message_Set_code(Single_file_component_can_contain_only_one_template_element, 10_000)
+	diagnostics.Message_Set_category(Single_file_component_can_contain_only_one_template_element, diagnostics.CategoryError)
+	diagnostics.Message_Set_key(Single_file_component_can_contain_only_one_template_element, "Single_file_component_can_contain_only_one_template_element")
+	diagnostics.Message_Set_text(Single_file_component_can_contain_only_one_template_element, "Single file component can contain only one <template> element")
+}

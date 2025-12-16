@@ -29,6 +29,7 @@ type ExtraShim struct {
 func main() {
 	packagesToShim := []string{
 		"ast",
+		"binder",
 		"parser",
 		"bundled",
 		"checker",

@@ -4,6 +4,7 @@ go 1.25.0
 
 replace (
 	github.com/microsoft/typescript-go/shim/ast => ./shim/ast
+	github.com/microsoft/typescript-go/shim/binder => ./shim/binder
 	github.com/microsoft/typescript-go/shim/bundled => ./shim/bundled
 	github.com/microsoft/typescript-go/shim/checker => ./shim/checker
 	github.com/microsoft/typescript-go/shim/compiler => ./shim/compiler
@@ -24,6 +25,7 @@ replace (
 
 require (
 	github.com/microsoft/typescript-go/shim/ast v0.0.0
+	github.com/microsoft/typescript-go/shim/binder v0.0.0
 	github.com/microsoft/typescript-go/shim/bundled v0.0.0
 	github.com/microsoft/typescript-go/shim/checker v0.0.0
 	github.com/microsoft/typescript-go/shim/compiler v0.0.0

@@ -8,10 +8,11 @@ import (
 
 	"github.com/auvred/golar/internal/vue/ast"
 
-	"github.com/microsoft/typescript-go/shim/tspath"
 	"github.com/microsoft/typescript-go/shim/ast"
+	"github.com/microsoft/typescript-go/shim/binder"
 	"github.com/microsoft/typescript-go/shim/core"
 	"github.com/microsoft/typescript-go/shim/parser"
+	"github.com/microsoft/typescript-go/shim/tspath"
 )
 
 type ParseError struct {
@@ -1164,7 +1165,7 @@ VOID_TAGS = map[string]struct{}{
 )
 
 func parseTsAst(source string) *ast.SourceFile {
-	return parser.ParseSourceFile(ast.SourceFileParseOptions{
+	file := parser.ParseSourceFile(ast.SourceFileParseOptions{
 		FileName: "/virtual.tsx",
 		Path: tspath.Path("/virtual.tsx"),
 		CompilerOptions: core.SourceFileAffectingCompilerOptions{
@@ -1175,4 +1176,6 @@ func parseTsAst(source string) *ast.SourceFile {
 		},
 		JSDocParsingMode: ast.JSDocParsingModeParseAll,
 	}, source, core.ScriptKindTSX) // TODO: script kind
+	binder.BindSourceFile(file)
+	return file
 }

@@ -19,40 +19,47 @@ type Mapping struct {
 func Codegen(sourceText string, root *vue_ast.RootNode) (string, []Mapping, []*ast.Diagnostic) {
 	ctx := newCodegenCtx(root, sourceText)
 
-	var scriptSetupCtx *codegenCtx
-	var templateCtx *codegenCtx
+	var scriptEl *vue_ast.ElementNode
+	var scriptSetupEl *vue_ast.ElementNode
+	var templateEl *vue_ast.ElementNode
 
+RootChild:
 	for _, child := range root.Children {
 		if child.Type != vue_ast.NodeTypeELEMENT {
 			continue
 		}
 
 		el := child.AsElement()
+
 		if el.Tag == "script" {
 			for _, prop := range el.Props {
 				if prop.Type == vue_ast.NodeTypeATTRIBUTE {
 					attr := prop.AsAttribute()
 					if attr.Name == "setup" {
-						if scriptSetupCtx != nil {
+						if scriptSetupEl != nil {
 							ctx.reportDiagnostic(el.Loc.WithEnd(el.InnerLoc.Pos()), vue_diagnostics.Single_file_component_can_contain_only_one_script_setup_element)
-							break
+						} else {
+							scriptSetupEl = el
 						}
-						ctx := newCodegenCtx(root, sourceText)
-						scriptSetupCtx = &ctx
-						generateScriptSetup(scriptSetupCtx, el)
+						continue RootChild
 					}
 				}
 			}
+
+			if scriptEl != nil {
+				ctx.reportDiagnostic(el.Loc.WithEnd(el.InnerLoc.Pos()), vue_diagnostics.Single_file_component_can_contain_only_one_script_element)
+			} else {
+				scriptEl = el
+			}
+			continue RootChild
 		}
 
 		if el.Tag == "template" {
-			if templateCtx != nil {
+			if templateEl != nil {
 				ctx.reportDiagnostic(el.Loc.WithEnd(el.InnerLoc.Pos()), vue_diagnostics.Single_file_component_can_contain_only_one_template_element)
 				continue
 			}
-			ctx := newCodegenCtx(root, sourceText)
-			templateCtx = &ctx
-			generateTemplate(templateCtx, el)
+			templateEl = el
 		}
 	}
 
@@ -74,22 +81,26 @@ func Codegen(sourceText string, root *vue_ast.RootNode) (string, []Mapping, []*a
 		lineStart = idx + 1
 	}
 
-	if scriptSetupCtx != nil {
+	{
+	 	c := newCodegenCtx(root, sourceText)
+		generateScript(&c, scriptSetupEl, scriptEl)
 		newMappingsStart := len(ctx.mappings)
-		ctx.mappings = append(ctx.mappings, scriptSetupCtx.mappings...)
+		ctx.mappings = append(ctx.mappings, c.mappings...)
 		for i := newMappingsStart; i < len(ctx.mappings); i++ {
 			ctx.mappings[i].ServiceOffset += ctx.serviceText.Len()
 		}
-		ctx.serviceText.Write([]byte(scriptSetupCtx.serviceText.String()))
+		ctx.serviceText.Write([]byte(c.serviceText.String()))
 	}
 
-	if templateCtx != nil {
+	{
+	 	c := newCodegenCtx(root, sourceText)
+		generateTemplate(&c, templateEl)
 		newMappingsStart := len(ctx.mappings)
-		ctx.mappings = append(ctx.mappings, templateCtx.mappings...)
+		ctx.mappings = append(ctx.mappings, c.mappings...)
 		for i := newMappingsStart; i < len(ctx.mappings); i++ {
 			ctx.mappings[i].ServiceOffset += ctx.serviceText.Len()
 		}
-		ctx.serviceText.Write([]byte(templateCtx.serviceText.String()))
+		ctx.serviceText.Write([]byte(c.serviceText.String()))
 	}
 
 	return ctx.serviceText.String(), ctx.mappings, ctx.diagnostics
@@ -125,99 +136,5 @@ func (c *codegenCtx) mapText(from, to int) {
 		ServiceOffset: serviceOffset,
 		Length: to - from,
 	})
-}
-
-func  generateScriptSetup(c *codegenCtx, el *vue_ast.ElementNode) {
-	if len(el.Children) != 1 {
-		panic("TODO: len of <script> children != 1")
-	}
-
-	text := el.Children[0].AsText()
-
-	c.serviceText.WriteString("// hello from codegen\n\n")
-	c.mapText(text.Loc.Pos(), text.Loc.End())
-	c.serviceText.WriteString("\n\n")
-
-	bindingRanges := []core.TextRange{}
-	for _, statement := range el.Ast.Statements.Nodes {
-		switch statement.Kind {
-		case ast.KindVariableStatement:
-			for _, decl := range statement.AsVariableStatement().DeclarationList.AsVariableDeclarationList().Declarations.Nodes {
-				name := decl.AsVariableDeclaration().Name()
-				var visitor ast.Visitor
-				visitor = func (n *ast.Node) bool {
-					if ast.IsIdentifier(n) {
-						bindingRanges = append(bindingRanges, n.Loc)
-					}
-					return n.ForEachChild(visitor)
-				}
-				visitor(name)
-			}
-		case ast.KindFunctionDeclaration, ast.KindClassDeclaration, ast.KindEnumDeclaration:
-			if name := statement.Name(); name != nil {
-				bindingRanges = append(bindingRanges, name.Loc)
-			}
-		}
-	}
-
-	innerStart := el.InnerLoc.Pos()
-
-	if len(bindingRanges) > 0 {
-		c.serviceText.WriteString("type __VLS_SetupExposed = {\n")
-		// TODO: proxy refs
-		for _, binding := range bindingRanges {
-			c.serviceText.WriteString(c.sourceText[innerStart + binding.Pos():innerStart + binding.End()])
-			c.serviceText.WriteString(": typeof ")
-			c.serviceText.WriteString(c.sourceText[innerStart + binding.Pos():innerStart + binding.End()])
-			c.serviceText.WriteRune('\n')
-		}
-		c.serviceText.WriteString("}\n")
-	}
-
-	c.serviceText.WriteString("const __VLS_Ctx = {\n")
-	if len(bindingRanges) > 0 {
-		c.serviceText.WriteString("...{} as __VLS_SetupExposed,\n")
-	}
-	c.serviceText.WriteString("}\n")
-
-	c.serviceText.WriteString("export default {} as import('vue').Component\n")
-}
-
-type templateCodegenCtx struct {
-	*codegenCtx
-}
-func generateTemplate(base *codegenCtx, el *vue_ast.ElementNode) {
-	c := templateCodegenCtx{
-		codegenCtx: base,
-	}
-	c.visit(el)
-}
-
-func (c *templateCodegenCtx) visit(el *vue_ast.ElementNode) {
-	for _, child := range el.Children {
-		switch child.Type {
-		case vue_ast.NodeTypeELEMENT:
-			c.visit(child.AsElement())
-		case vue_ast.NodeTypeINTERPOLATION:
-			interpolation := child.AsInterpolation()
-			c.serviceText.WriteString(";( ")
-			innerStart := interpolation.Loc.Pos() + 2
-			lastEnd := innerStart
-			var visitor ast.Visitor
-			visitor = func (node *ast.Node) bool {
-				// TODO: skip in binding positions
-				if ast.IsIdentifier(node) {
-					c.mapText(lastEnd, innerStart + node.Pos())
-					c.serviceText.WriteString("__VLS_Ctx.")
-					c.mapText(innerStart + node.Pos(), innerStart + node.End())
-					lastEnd = innerStart + node.End()
-				}
-				return node.ForEachChild(visitor)
-			}
-			visitor(interpolation.Content.Ast.AsNode())
-			c.mapText(lastEnd, interpolation.Loc.End() - 2)
-			c.serviceText.WriteString(" )\n")
-		}
-	}
 }
 

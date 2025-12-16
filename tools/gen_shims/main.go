@@ -22,6 +22,7 @@ type ExtraShim struct {
 	ExtraFunctions  []string
 	ExtraMethods    map[string]([]string)
 	ExtraFields     map[string]([]string)
+	ExtraFieldSetters     map[string]([]string)
 	IgnoreFunctions []string
 }
 
@@ -33,6 +34,7 @@ func main() {
 		"checker",
 		"compiler",
 		"core",
+		"diagnostics",
 		"diagnosticwriter",
 		"golarext",
 		"lsp/lsproto",
@@ -81,6 +83,9 @@ func main() {
 		}
 		if extraShim.ExtraFields == nil {
 			extraShim.ExtraFields = map[string]([]string){}
+		}
+		if extraShim.ExtraFieldSetters == nil {
+			extraShim.ExtraFieldSetters = map[string]([]string){}
 		}
 		if extraShim.IgnoreFunctions == nil {
 			extraShim.IgnoreFunctions = []string{}
@@ -155,6 +160,10 @@ func main() {
 		matchedExtraFields := make(map[string]bool, len(extraShim.ExtraFields))
 		for name := range extraShim.ExtraFields {
 			matchedExtraFields[name] = false
+		}
+		matchedExtraFieldSetters := make(map[string]bool, len(extraShim.ExtraFieldSetters))
+		for name := range extraShim.ExtraFieldSetters {
+			matchedExtraFieldSetters[name] = false
 		}
 
 		scope := pkg.Types.Scope()
@@ -255,61 +264,64 @@ func main() {
 					}
 				}
 
+				mirrorStructName := "extra_" + name
+				structEmitted := false
+
+				var emitExtraStruct func(name string, s *types.Struct)
+				emitExtraStruct = func(name string, s *types.Struct) {
+					if structEmitted {
+						return
+					}
+					structEmitted = true
+					shimBuilder.WriteString("type extra_")
+					shimBuilder.WriteString(name)
+					shimBuilder.WriteString(" struct {")
+
+					dependencies := [](struct {
+						string
+						*types.Struct
+					}){}
+					for field := range s.Fields() {
+						shimBuilder.WriteString("\n  ")
+						if !field.Embedded() {
+							shimBuilder.WriteString(field.Name())
+							shimBuilder.WriteByte(' ')
+						}
+
+						ptrType, ok := field.Type().(*types.Pointer)
+						if ok {
+							named, ok := ptrType.Elem().(*types.Named)
+							if ok && !named.Obj().Exported() {
+								strct, ok := named.Underlying().(*types.Struct)
+								if ok {
+									n := named.Obj().Name()
+									dependencies = append(dependencies, struct {
+										string
+										*types.Struct
+									}{n, strct})
+									shimBuilder.WriteString("extra_")
+									shimBuilder.WriteString(n)
+									continue
+								}
+							}
+						}
+
+						shimBuilder.WriteString(
+							// TODO: move to extra-shim.json
+							strings.ReplaceAll(types.TypeString(field.Type(), qualifierOnlyPackageName), "checker.thisAssignmentDeclarationKind", "int32"),
+						)
+					}
+					shimBuilder.WriteString("\n}\n")
+
+					for _, dep := range dependencies {
+						emitExtraStruct(dep.string, dep.Struct)
+					}
+				}
+
 				if _, ok := matchedExtraFields[name]; isNamed && ok {
 					importPackage("unsafe", true)
 
 					matchedExtraFields[name] = true
-					if err != nil {
-						log.Fatalf("error formatting %v struct body: %v", name, err)
-					}
-					mirrorStructName := "extra_" + name
-
-					var emitExtraStruct func(name string, s *types.Struct)
-					emitExtraStruct = func(name string, s *types.Struct) {
-						shimBuilder.WriteString("type extra_")
-						shimBuilder.WriteString(name)
-						shimBuilder.WriteString(" struct {")
-
-						dependencies := [](struct {
-							string
-							*types.Struct
-						}){}
-						for field := range s.Fields() {
-							shimBuilder.WriteString("\n  ")
-							if !field.Embedded() {
-								shimBuilder.WriteString(field.Name())
-								shimBuilder.WriteByte(' ')
-							}
-
-							ptrType, ok := field.Type().(*types.Pointer)
-							if ok {
-								named, ok := ptrType.Elem().(*types.Named)
-								if ok && !named.Obj().Exported() {
-									strct, ok := named.Underlying().(*types.Struct)
-									if ok {
-										n := named.Obj().Name()
-										dependencies = append(dependencies, struct {
-											string
-											*types.Struct
-										}{n, strct})
-										shimBuilder.WriteString("extra_")
-										shimBuilder.WriteString(n)
-										continue
-									}
-								}
-							}
-
-							shimBuilder.WriteString(
-								// TODO: move to extra-shim.json
-								strings.ReplaceAll(types.TypeString(field.Type(), qualifierOnlyPackageName), "checker.thisAssignmentDeclarationKind", "int32"),
-							)
-						}
-						shimBuilder.WriteString("\n}\n")
-
-						for _, dep := range dependencies {
-							emitExtraStruct(dep.string, dep.Struct)
-						}
-					}
 
 					strct, ok := named.Underlying().(*types.Struct)
 					if !ok {
@@ -345,6 +357,51 @@ func main() {
 						shimBuilder.WriteString(")(unsafe.Pointer(v))).")
 						shimBuilder.WriteString(field)
 						shimBuilder.WriteString("\n")
+						shimBuilder.WriteString("}\n")
+					}
+				}
+
+				if _, ok := matchedExtraFieldSetters[name]; isNamed && ok {
+					importPackage("unsafe", true)
+
+					matchedExtraFields[name] = true
+
+					strct, ok := named.Underlying().(*types.Struct)
+					if !ok {
+						log.Fatalf("expected %v to be struct", name)
+					}
+
+					emitExtraStruct(name, strct)
+
+					mappedFieldTypes := make(map[string]*types.Var, strct.NumFields())
+					for field := range strct.Fields() {
+						mappedFieldTypes[field.Name()] = field
+					}
+
+					for _, field := range extraShim.ExtraFieldSetters[name] {
+						shimBuilder.WriteString("func ")
+						shimBuilder.WriteString(name)
+						shimBuilder.WriteString("_Set_")
+						shimBuilder.WriteString(field)
+						shimBuilder.WriteString("(v *")
+						shimBuilder.WriteString(pkg.Name)
+						shimBuilder.WriteByte('.')
+						shimBuilder.WriteString(name)
+						shimBuilder.WriteString(", field ")
+
+						fieldVar, ok := mappedFieldTypes[field]
+						if !ok {
+							log.Fatalf("expected struct %q to contain field %q", name, field)
+						}
+
+						shimBuilder.WriteString(types.TypeString(fieldVar.Type(), qualifierOnlyPackageName))
+						shimBuilder.WriteString(") {\n")
+
+						shimBuilder.WriteString("  ((*")
+						shimBuilder.WriteString(mirrorStructName)
+						shimBuilder.WriteString(")(unsafe.Pointer(v))).")
+						shimBuilder.WriteString(field)
+						shimBuilder.WriteString(" = field\n")
 						shimBuilder.WriteString("}\n")
 					}
 				}

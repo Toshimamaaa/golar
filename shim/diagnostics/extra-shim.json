@@ -1,0 +1,10 @@
+{
+  "ExtraFieldSetters": {
+    "Message": [
+      "code",
+      "category",
+      "key",
+      "text"
+    ]
+  }
+}

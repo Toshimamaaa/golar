@@ -8,6 +8,7 @@ replace (
 	github.com/microsoft/typescript-go/shim/checker => ./shim/checker
 	github.com/microsoft/typescript-go/shim/compiler => ./shim/compiler
 	github.com/microsoft/typescript-go/shim/core => ./shim/core
+	github.com/microsoft/typescript-go/shim/diagnostics => ./shim/diagnostics
 	github.com/microsoft/typescript-go/shim/diagnosticwriter => ./shim/diagnosticwriter
 	github.com/microsoft/typescript-go/shim/golarext => ./shim/golarext
 	github.com/microsoft/typescript-go/shim/lsp/lsproto => ./shim/lsp/lsproto
@@ -30,6 +31,7 @@ require (
 	github.com/microsoft/typescript-go/shim/lsp/lsproto v0.0.0
 	github.com/microsoft/typescript-go/shim/project v0.0.0
 	github.com/microsoft/typescript-go/shim/scanner v0.0.0
+	github.com/microsoft/typescript-go/shim/diagnostics v0.0.0
 	github.com/microsoft/typescript-go/shim/diagnosticwriter v0.0.0
 	github.com/microsoft/typescript-go/shim/golarext v0.0.0
 	github.com/microsoft/typescript-go/shim/parser v0.0.0

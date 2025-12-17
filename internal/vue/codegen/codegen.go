@@ -90,6 +90,7 @@ RootChild:
 			ctx.mappings[i].ServiceOffset += ctx.serviceText.Len()
 		}
 		ctx.serviceText.Write([]byte(c.serviceText.String()))
+		ctx.diagnostics = append(ctx.diagnostics, c.diagnostics...)
 	}
 
 	{
@@ -101,6 +102,7 @@ RootChild:
 			ctx.mappings[i].ServiceOffset += ctx.serviceText.Len()
 		}
 		ctx.serviceText.Write([]byte(c.serviceText.String()))
+		ctx.diagnostics = append(ctx.diagnostics, c.diagnostics...)
 	}
 
 	return ctx.serviceText.String(), ctx.mappings, ctx.diagnostics
@@ -124,8 +126,8 @@ func newCodegenCtx(root *vue_ast.RootNode, sourceText string) codegenCtx {
 	}
 }
 
-func (c *codegenCtx) reportDiagnostic(loc core.TextRange, message *diagnostics.Message) {
-	c.diagnostics = append(c.diagnostics, ast.NewDiagnostic(nil, loc, message))
+func (c *codegenCtx) reportDiagnostic(loc core.TextRange, message *diagnostics.Message, args... any) {
+	c.diagnostics = append(c.diagnostics, ast.NewDiagnostic(nil, loc, message, args...))
 }
 
 func (c *codegenCtx) mapText(from, to int) {

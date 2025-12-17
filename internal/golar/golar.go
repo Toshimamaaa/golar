@@ -47,7 +47,7 @@ func (d *diagnosticProxy) RelatedInformation() []diagnosticwriter.Diagnostic {
 	related := d.Diagnostic.RelatedInformation()
 	result := []diagnosticwriter.Diagnostic{}
 	for _, r := range related {
-		if r.Code() >= 10_000 {
+		if r.Code() >= 1_000_000 {
 			result = append(result, &diagnosticProxy{r})
 			continue
 		}
@@ -105,7 +105,7 @@ func (d *diagnosticProxy) MessageChain() []diagnosticwriter.Diagnostic {
 	chain := d.Diagnostic.MessageChain()
 	result := []diagnosticwriter.Diagnostic{}
 	for _, r := range chain {
-		if r.Code() >= 10_000 {
+		if r.Code() >= 1_000_000 {
 			result = append(result, &diagnosticProxy{r})
 			continue
 		}
@@ -119,7 +119,7 @@ func (d *diagnosticProxy) MessageChain() []diagnosticwriter.Diagnostic {
 
 func (d *diagnosticProxy) Pos() int {
 	servicePos := d.Diagnostic.Pos()
-	if d.Code() >= 10_000 {
+	if d.Code() >= 1_000_000 {
 		return servicePos
 	}
 	sourcePos := servicePosToSource(d.Diagnostic.File(), servicePos)
@@ -131,7 +131,7 @@ func (d *diagnosticProxy) Pos() int {
 
 func (d *diagnosticProxy) End() int {
 	servicePos := d.Diagnostic.End()
-	if d.Code() >= 10_000 {
+	if d.Code() >= 1_000_000 {
 		return servicePos
 	}
 	sourcePos := servicePosToSource(d.Diagnostic.File(), servicePos)
@@ -180,7 +180,7 @@ func parseFile(opts ast.SourceFileParseOptions, sourceText string, scriptKind co
 }
 
 func adjustDiagnostic(file *ast.SourceFile, diagnostic *ast.Diagnostic) *ast.Diagnostic {
-	if file.GolarLanguageData == nil || diagnostic.Code() >= 10_000 {
+	if file.GolarLanguageData == nil || diagnostic.Code() >= 1_000_000 {
 		return diagnostic
 	}
 

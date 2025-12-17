@@ -7,6 +7,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/auvred/golar/internal/vue/ast"
+	"github.com/auvred/golar/internal/utils"
 
 	"github.com/microsoft/typescript-go/shim/ast"
 	"github.com/microsoft/typescript-go/shim/binder"
@@ -110,7 +111,7 @@ func (p *Parser) oninterpolation (start int, end int) {
 	// 	}
 	// }
 
-	exp := vue_ast.NewSimpleExpressionNode(expContent, parseTsAst(expContent), core.NewTextRange(innerStart, innerEnd))
+	exp := vue_ast.NewSimpleExpressionNode(expContent, parseTsAst(expContent), core.NewTextRange(innerStart, innerEnd), 0)
 
 	p.addNode(vue_ast.NewInterpolationNode(
 		exp,
@@ -200,13 +201,14 @@ func (p *Parser) onattribname (start int, end int) {
 func (p *Parser) ondirname (start int, end int) {
 	raw := p.sourceText[start:end]
 	var name string
-	if raw == ".' || raw == ':" {
+	switch raw {
+	case ".", ":":
 		name = "bind"
-	} else if raw == "@" {
+	case "@":
 		name = "on"
-	} else if raw == "#" {
+	case "#":
 		name = "slot"
-	} else {
+	default:
 		name = raw[2:]
 	}
 
@@ -226,6 +228,7 @@ func (p *Parser) ondirname (start int, end int) {
 			raw,
 			// TODO:
 			// modifiers: raw == ".' ? [createSimpleExpression('prop")] : [],
+			core.NewTextRange(start, end),
 			core.NewTextRange(start, -1),
 		).AsNode()
 		if name == "pre" {
@@ -378,13 +381,27 @@ func (p *Parser) onattribend (quote QuoteType, end int) {
 				// 		expParseMode = ExpParseMode.Statements
 				// 	}
 				// }
-				// currentProp.exp = createExp(
-				// 	currentAttrValue,
-				// 	false,
-				// 	getLoc(currentAttrStartIndex, currentAttrEndIndex),
-				// 	ConstantTypes.NOT_CONSTANT,
-				// 	expParseMode,
-				// )
+				prop := p.currentProp.AsDirective()
+				if len(utils.TrimWhiteSpaceOrLineTerminator(p.currentAttrValue)) == 0 {
+					prop.Expression = vue_ast.NewSimpleExpressionNode(p.currentAttrValue, nil, core.NewTextRange(p.currentAttrStartIndex, p.currentAttrEndIndex), 0)
+				} else {
+					var prefixLen int
+					var expressionText string
+					switch prop.Name {
+					case "for":
+						panic("TODO: v-for")
+					case "slot":
+						panic("TODO: v-slot")
+					case "on":
+						panic("TODO: v-on")
+					default:
+						prefixLen = 1
+						expressionText = "(" + p.currentAttrValue + ")"
+					}
+					prop.Expression = vue_ast.NewSimpleExpressionNode(p.currentAttrValue, parseTsAst(
+						expressionText,
+					), core.NewTextRange(p.currentAttrStartIndex, p.currentAttrEndIndex), prefixLen)
+				}
 				// if currentProp.name == "for" {
 				// 	currentProp.forParseResult = parseForExpression(currentProp.exp)
 				// }

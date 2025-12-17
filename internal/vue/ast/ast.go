@@ -100,14 +100,17 @@ func NewTextNode(content string, loc core.TextRange) *TextNode {
 type SimpleExpressionNode struct {
 	Node
   Content string
-	// nil when expression is a simple identifier (static)
+	// TODO: right now we don't have simple identifier path
+	// nil when expression is a simple identifier (static) or when empty
 	Ast *ast.SourceFile
+	// TODO: modify TS parser to parse expressions instead?
+	PrefixLen int
 	// TODO
   // isHandlerKey?: boolean
 }
 
-func NewSimpleExpressionNode(content string, ast *ast.SourceFile, loc core.TextRange) *SimpleExpressionNode {
-	data := SimpleExpressionNode{Node: Node{Type: NodeTypeSIMPLE_EXPRESSION, Loc: loc}, Content: content, Ast: ast}
+func NewSimpleExpressionNode(content string, ast *ast.SourceFile, loc core.TextRange, prefixLen int) *SimpleExpressionNode {
+	data := SimpleExpressionNode{Node: Node{Type: NodeTypeSIMPLE_EXPRESSION, Loc: loc}, Content: content, Ast: ast, PrefixLen: prefixLen}
 	data.Node.data = &data
 	return &data
 }
@@ -138,22 +141,20 @@ func NewAttributeNode(name string, nameLoc, loc core.TextRange) *AttributeNode {
 
 type DirectiveNode struct {
 	Node
-  /**
-   * the normalized name without prefix or shorthands, e.g. "bind", "on"
-   */
+  // The normalized name without prefix or shorthands, e.g. "bind", "on"
   Name string
-  /**
-   * the raw attribute name, preserving shorthand, and including arg & modifiers
-   * this is only used during parse.
-   */
-	RawName string // :?
-  // exp ExpressionNode | undefined
+  // The raw attribute name, preserving shorthand, and including arg & modifiers
+  // this is only used during parse.
+	RawName string
+	NameLoc core.TextRange
+	// Nil when directive doesn't have expression
+  Expression *SimpleExpressionNode
   // arg ExpressionNode | undefined
   // modifiers: SimpleExpressionNode[]
 }
 
-func NewDirectiveNode(name, rawName string, loc core.TextRange) *DirectiveNode {
-	data := DirectiveNode{Node: Node{Type: NodeTypeDIRECTIVE, Loc: loc}, Name: name, RawName: rawName}
+func NewDirectiveNode(name, rawName string, nameLoc, loc core.TextRange) *DirectiveNode {
+	data := DirectiveNode{Node: Node{Type: NodeTypeDIRECTIVE, Loc: loc}, Name: name, RawName: rawName, NameLoc: nameLoc}
 	data.Node.data = &data
 	return &data
 }

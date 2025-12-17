@@ -11,9 +11,9 @@ import (
 )
 
 type Mapping struct {
-	SourceOffset int
+	SourceOffset  int
 	ServiceOffset int
-	Length int
+	Length        int
 }
 
 func Codegen(sourceText string, root *vue_ast.RootNode) (string, []Mapping, []*ast.Diagnostic) {
@@ -82,7 +82,7 @@ RootChild:
 	}
 
 	{
-	 	c := newCodegenCtx(root, sourceText)
+		c := newCodegenCtx(root, sourceText)
 		generateScript(&c, scriptSetupEl, scriptEl)
 		newMappingsStart := len(ctx.mappings)
 		ctx.mappings = append(ctx.mappings, c.mappings...)
@@ -94,7 +94,7 @@ RootChild:
 	}
 
 	{
-	 	c := newCodegenCtx(root, sourceText)
+		c := newCodegenCtx(root, sourceText)
 		generateTemplate(&c, templateEl)
 		newMappingsStart := len(ctx.mappings)
 		ctx.mappings = append(ctx.mappings, c.mappings...)
@@ -109,24 +109,24 @@ RootChild:
 }
 
 type codegenCtx struct {
-	ast *vue_ast.RootNode
-	sourceText string
+	ast         *vue_ast.RootNode
+	sourceText  string
 	serviceText strings.Builder
-	mappings []Mapping
+	mappings    []Mapping
 	diagnostics []*ast.Diagnostic
 }
 
 func newCodegenCtx(root *vue_ast.RootNode, sourceText string) codegenCtx {
 	return codegenCtx{
-		ast: root,
-		sourceText: sourceText,
+		ast:         root,
+		sourceText:  sourceText,
 		serviceText: strings.Builder{},
-		mappings: []Mapping{},
+		mappings:    []Mapping{},
 		diagnostics: []*ast.Diagnostic{},
 	}
 }
 
-func (c *codegenCtx) reportDiagnostic(loc core.TextRange, message *diagnostics.Message, args... any) {
+func (c *codegenCtx) reportDiagnostic(loc core.TextRange, message *diagnostics.Message, args ...any) {
 	c.diagnostics = append(c.diagnostics, ast.NewDiagnostic(nil, loc, message, args...))
 }
 
@@ -134,9 +134,8 @@ func (c *codegenCtx) mapText(from, to int) {
 	serviceOffset := c.serviceText.Len()
 	c.serviceText.WriteString(c.sourceText[from:to])
 	c.mappings = append(c.mappings, Mapping{
-		SourceOffset: from,
+		SourceOffset:  from,
 		ServiceOffset: serviceOffset,
-		Length: to - from,
+		Length:        to - from,
 	})
 }
-

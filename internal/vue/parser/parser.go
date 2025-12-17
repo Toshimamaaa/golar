@@ -6,8 +6,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/auvred/golar/internal/vue/ast"
 	"github.com/auvred/golar/internal/utils"
+	"github.com/auvred/golar/internal/vue/ast"
 
 	"github.com/microsoft/typescript-go/shim/ast"
 	"github.com/microsoft/typescript-go/shim/binder"
@@ -18,25 +18,25 @@ import (
 
 type ParseError struct {
 	Message string
-	Pos int
+	Pos     int
 }
 
 type Parser struct {
-// let currentOptions: MergedParserOptions = defaultParserOptions
+	// let currentOptions: MergedParserOptions = defaultParserOptions
 	currentRoot *vue_ast.RootNode
 
 	// parser state
-	sourceText string
-	currentOpenTag *vue_ast.ElementNode
-	currentProp *vue_ast.Node // AttributeNode | DirectiveNode | null = null
-	currentAttrValue string
+	sourceText            string
+	currentOpenTag        *vue_ast.ElementNode
+	currentProp           *vue_ast.Node // AttributeNode | DirectiveNode | null = null
+	currentAttrValue      string
 	currentAttrStartIndex int //= -1
-	currentAttrEndIndex int //= -1
-	inPre int
-	inVPre bool
-	currentVPreBoundary *vue_ast.ElementNode
+	currentAttrEndIndex   int //= -1
+	inPre                 int
+	inVPre                bool
+	currentVPreBoundary   *vue_ast.ElementNode
 	// TODO(perf): why stack is prepended???
-	stack []*vue_ast.ElementNode
+	stack     []*vue_ast.ElementNode
 	tokenizer *Tokenizer
 
 	errors []ParseError
@@ -44,10 +44,10 @@ type Parser struct {
 
 func Parse(source string) *vue_ast.RootNode {
 	p := Parser{
-		tokenizer: NewTokenizer(source),
-		sourceText: source,
+		tokenizer:             NewTokenizer(source),
+		sourceText:            source,
 		currentAttrStartIndex: -1,
-		currentAttrEndIndex: -1,
+		currentAttrEndIndex:   -1,
 	}
 	p.tokenizer.parser = &p
 	p.currentRoot = vue_ast.NewRootNode()
@@ -59,7 +59,6 @@ func (p *Parser) emitError(msg string, pos int) {
 	p.errors = append(p.errors, ParseError{msg, pos})
 }
 
-
 func (p *Parser) addNode(node *vue_ast.Node) {
 	if len(p.stack) > 0 {
 		p.stack[0].Children = append(p.stack[0].Children, node)
@@ -68,18 +67,18 @@ func (p *Parser) addNode(node *vue_ast.Node) {
 	}
 }
 
-func (p *Parser) onerr (code ErrorCode, index int) {
+func (p *Parser) onerr(code ErrorCode, index int) {
 }
 
-func (p *Parser) ontext (start int, end int) {
+func (p *Parser) ontext(start int, end int) {
 	p.onText(p.sourceText[start:end], start, end)
 }
 
-func (p *Parser) ontextentity (char string, start int, end int) {
+func (p *Parser) ontextentity(char string, start int, end int) {
 	p.onText(char, start, end)
 }
 
-func (p *Parser) oninterpolation (start int, end int) {
+func (p *Parser) oninterpolation(start int, end int) {
 	if p.inVPre {
 		p.onText(p.sourceText[start:end], start, end)
 		return
@@ -119,14 +118,14 @@ func (p *Parser) oninterpolation (start int, end int) {
 	).AsNode())
 }
 
-func (p *Parser) onopentagname (start int, end int) {
+func (p *Parser) onopentagname(start int, end int) {
 	name := p.sourceText[start:end]
 	p.currentOpenTag = vue_ast.NewElementNode(
 		// TODO: do we need to support namespaces?
 		// currentOptions.getNamespace(name, stack[0], currentOptions.ns),
 		vue_ast.NamespaceHTML,
 		name,
-		core.NewTextRange(start - 1, end),
+		core.NewTextRange(start-1, end),
 	)
 }
 
@@ -135,9 +134,9 @@ func isPreTag(tag string) bool {
 	return tag == "pre"
 }
 
-func (p *Parser) onopentagend (end int) {
+func (p *Parser) onopentagend(end int) {
 	if p.tokenizer.inSFCRoot() {
-		p.currentOpenTag.InnerLoc = core.NewTextRange(end + 1, end + 1)
+		p.currentOpenTag.InnerLoc = core.NewTextRange(end+1, end+1)
 	}
 	p.addNode(p.currentOpenTag.AsNode())
 	if p.currentOpenTag.Ns == vue_ast.NamespaceHTML && isPreTag(p.currentOpenTag.Tag) {
@@ -154,7 +153,7 @@ func (p *Parser) onopentagend (end int) {
 	p.currentOpenTag = nil
 }
 
-func (p *Parser) onclosetag (start int, end int) {
+func (p *Parser) onclosetag(start int, end int) {
 	name := p.sourceText[start:end]
 	if _, ok := VOID_TAGS[name]; !ok {
 		found := false
@@ -178,7 +177,7 @@ func (p *Parser) onclosetag (start int, end int) {
 	}
 }
 
-func (p *Parser) onselfclosingtag (end int) {
+func (p *Parser) onselfclosingtag(end int) {
 	name := p.currentOpenTag.Tag
 	p.currentOpenTag.IsSelfClosing = true
 	p.onopentagend(end)
@@ -189,7 +188,7 @@ func (p *Parser) onselfclosingtag (end int) {
 	}
 }
 
-func (p *Parser) onattribname (start int, end int) {
+func (p *Parser) onattribname(start int, end int) {
 	// plain attribute
 	p.currentProp = vue_ast.NewAttributeNode(
 		p.sourceText[start:end],
@@ -198,7 +197,7 @@ func (p *Parser) onattribname (start int, end int) {
 	).AsNode()
 }
 
-func (p *Parser) ondirname (start int, end int) {
+func (p *Parser) ondirname(start int, end int) {
 	raw := p.sourceText[start:end]
 	var name string
 	switch raw {
@@ -247,12 +246,11 @@ func (p *Parser) ondirname (start int, end int) {
 	}
 }
 
-func isVPre(p *vue_ast.Node) bool  {
+func isVPre(p *vue_ast.Node) bool {
 	return p.Type == vue_ast.NodeTypeDIRECTIVE && p.AsDirective().Name == "pre"
 }
 
-
-func (p *Parser) ondirarg (start int, end int) {
+func (p *Parser) ondirarg(start int, end int) {
 	if start == end {
 		return
 	}
@@ -273,7 +271,7 @@ func (p *Parser) ondirarg (start int, end int) {
 	}
 }
 
-func (p *Parser) ondirmodifier (start int, end int) {
+func (p *Parser) ondirmodifier(start int, end int) {
 	mod := p.sourceText[start:end]
 	if p.inVPre && !isVPre(p.currentProp) {
 		prop := p.currentProp.AsAttribute()
@@ -298,7 +296,7 @@ func (p *Parser) ondirmodifier (start int, end int) {
 	}
 }
 
-func (p *Parser) onattribdata (start int, end int) {
+func (p *Parser) onattribdata(start int, end int) {
 	p.currentAttrValue += p.sourceText[start:end]
 	if p.currentAttrStartIndex < 0 {
 		p.currentAttrStartIndex = start
@@ -306,7 +304,7 @@ func (p *Parser) onattribdata (start int, end int) {
 	p.currentAttrEndIndex = end
 }
 
-func (p *Parser) onattribentity (char string, start int, end int) {
+func (p *Parser) onattribentity(char string, start int, end int) {
 	p.currentAttrValue += char
 	if p.currentAttrStartIndex < 0 {
 		p.currentAttrStartIndex = start
@@ -314,7 +312,7 @@ func (p *Parser) onattribentity (char string, start int, end int) {
 	p.currentAttrEndIndex = end
 }
 
-func (p *Parser) onattribnameend (end int) {
+func (p *Parser) onattribnameend(end int) {
 	start := p.currentProp.Loc.Pos()
 	name := p.sourceText[start:end]
 	if p.currentProp.Type == vue_ast.NodeTypeDIRECTIVE {
@@ -330,7 +328,7 @@ func (p *Parser) onattribnameend (end int) {
 	// }
 }
 
-func (p *Parser) onattribend (quote QuoteType, end int) {
+func (p *Parser) onattribend(quote QuoteType, end int) {
 	if p.currentOpenTag != nil && p.currentProp != nil {
 		// finalize end pos
 		p.currentProp.Loc = p.currentProp.Loc.WithEnd(end)
@@ -355,7 +353,7 @@ func (p *Parser) onattribend (quote QuoteType, end int) {
 					core.NewTextRange(p.currentAttrStartIndex, p.currentAttrEndIndex),
 				)
 				if quote == QuoteTypeUnquoted {
-					prop.Value.Loc = core.NewTextRange(p.currentAttrStartIndex - 1, p.currentAttrEndIndex + 1)
+					prop.Value.Loc = core.NewTextRange(p.currentAttrStartIndex-1, p.currentAttrEndIndex+1)
 				}
 				if p.tokenizer.inSFCRoot() &&
 					p.currentOpenTag.Tag == "template" &&
@@ -434,72 +432,72 @@ func (p *Parser) onattribend (quote QuoteType, end int) {
 	p.currentAttrEndIndex = -1
 }
 
-func (p *Parser) oncomment (start int, end int) {
+func (p *Parser) oncomment(start int, end int) {
 	p.addNode(vue_ast.NewCommentNode(
 		p.sourceText[start:end],
-		core.NewTextRange(start - 4, end + 3),
+		core.NewTextRange(start-4, end+3),
 	).AsNode())
 }
 
-func (p *Parser) onend () {
+func (p *Parser) onend() {
 	end := len(p.sourceText)
 	// EOF ERRORS
 	if p.tokenizer.state != StateText {
-		switch (p.tokenizer.state) {
-			case StateBeforeTagName:
-			case StateBeforeClosingTagName:
-				p.emitError("EOF before tag name", end)
-				break
-			case StateInterpolation:
-			case StateInterpolationClose:
-				p.emitError(
-					"Missing interpolation end",
-					p.tokenizer.sectionStart,
-				)
-				break
-			case StateInCommentLike:
-				if p.tokenizer.currentSequence == &SequenceCdataEnd {
-					p.emitError("EOF in cdata", end)
-				} else {
-					p.emitError("EOF in comment", end)
-				}
-				break
-			case StateInTagName:
-			case StateInSelfClosingTag:
-			case StateInClosingTagName:
-			case StateBeforeAttrName:
-			case StateInAttrName:
-			case StateInDirName:
-			case StateInDirArg:
-			case StateInDirDynamicArg:
-			case StateInDirModifier:
-			case StateAfterAttrName:
-			case StateBeforeAttrValue:
-			case StateInAttrValueDq: // "
-			case StateInAttrValueSq: // '
-			case StateInAttrValueNq:
-				p.emitError("EOF in tag", end)
-				break
-			default:
-				// console.log(p.tokenizer.state)
-				break
+		switch p.tokenizer.state {
+		case StateBeforeTagName:
+		case StateBeforeClosingTagName:
+			p.emitError("EOF before tag name", end)
+			break
+		case StateInterpolation:
+		case StateInterpolationClose:
+			p.emitError(
+				"Missing interpolation end",
+				p.tokenizer.sectionStart,
+			)
+			break
+		case StateInCommentLike:
+			if p.tokenizer.currentSequence == &SequenceCdataEnd {
+				p.emitError("EOF in cdata", end)
+			} else {
+				p.emitError("EOF in comment", end)
+			}
+			break
+		case StateInTagName:
+		case StateInSelfClosingTag:
+		case StateInClosingTagName:
+		case StateBeforeAttrName:
+		case StateInAttrName:
+		case StateInDirName:
+		case StateInDirArg:
+		case StateInDirDynamicArg:
+		case StateInDirModifier:
+		case StateAfterAttrName:
+		case StateBeforeAttrValue:
+		case StateInAttrValueDq: // "
+		case StateInAttrValueSq: // '
+		case StateInAttrValueNq:
+			p.emitError("EOF in tag", end)
+			break
+		default:
+			// console.log(p.tokenizer.state)
+			break
 		}
 	}
 	for _, e := range p.stack {
-		p.onCloseTag(e, end - 1, false)
+		p.onCloseTag(e, end-1, false)
 		p.emitError("Missing end tag", e.Loc.Pos())
 	}
 }
 
-func (p *Parser) oncdata (start int, end int) {
+func (p *Parser) oncdata(start int, end int) {
 	if len(p.stack) > 0 && p.stack[0].Ns != vue_ast.NamespaceHTML {
 		p.onText(p.sourceText[start:end], start, end)
 	} else {
-		p.emitError("CDATA in HTML content", start - 9)
+		p.emitError("CDATA in HTML content", start-9)
 	}
 }
 
-func (p *Parser) onprocessinginstruction (start int, endIndex int) {
+func (p *Parser) onprocessinginstruction(start int, endIndex int) {
 	// ignore as we do not have runtime handling for this, only check error
 	ns := vue_ast.NamespaceHTML // currentOptions.ns
 	if len(p.stack) > 0 {
@@ -508,7 +506,7 @@ func (p *Parser) onprocessinginstruction (start int, endIndex int) {
 	if ns == vue_ast.NamespaceHTML {
 		p.emitError(
 			"Unexpected question mark instead of tag name",
-			start - 1,
+			start-1,
 		)
 	}
 }
@@ -596,8 +594,8 @@ func (p *Parser) onText(content string, start, end int) {
 	if len(p.stack) > 0 {
 		children = p.stack[0].Children
 	}
-	if len(children) > 0 && children[len(children) - 1].Type == vue_ast.NodeTypeTEXT {
-		lastNode := children[len(children) - 1].AsText()
+	if len(children) > 0 && children[len(children)-1].Type == vue_ast.NodeTypeTEXT {
+		lastNode := children[len(children)-1].AsText()
 		// merge
 		lastNode.Content += content
 		lastNode.Loc = lastNode.Loc.WithEnd(end)
@@ -625,7 +623,7 @@ func (p *Parser) onCloseTag(el *vue_ast.ElementNode, end int, isImplied bool) {
 
 	if p.tokenizer.inSFCRoot() {
 		if len(el.Children) > 0 {
-			el.InnerLoc = el.InnerLoc.WithEnd(el.Children[len(el.Children) - 1].Loc.End())
+			el.InnerLoc = el.InnerLoc.WithEnd(el.Children[len(el.Children)-1].Loc.End())
 			if el.Tag == "script" {
 				if len(el.Children) != 1 {
 					panic("assertion failed: <script> has more than 1 child")
@@ -685,23 +683,23 @@ func (p *Parser) onCloseTag(el *vue_ast.ElementNode, end int, isImplied bool) {
 }
 
 func (p *Parser) lookAhead(index int, c rune) int {
-    for off, r := range p.sourceText[index:] {
-        if r == c {
-            return index + off
-        }
-    }
-    return len(p.sourceText) - 1
+	for off, r := range p.sourceText[index:] {
+		if r == c {
+			return index + off
+		}
+	}
+	return len(p.sourceText) - 1
 }
 
 func (p *Parser) backTrack(index int, c rune) int {
-    for i := index; i >= 0; {
-        r, size := utf8.DecodeLastRuneInString(p.sourceText[:i+1])
-        if r == c {
-            return i + 1 - size
-        }
-        i -= size
-    }
-    return 0
+	for i := index; i >= 0; {
+		r, size := utf8.DecodeLastRuneInString(p.sourceText[:i+1])
+		if r == c {
+			return i + 1 - size
+		}
+		i -= size
+	}
+	return 0
 }
 
 func isUpperCase(c rune) bool {
@@ -925,266 +923,265 @@ func condense(s string) string {
 // 	return root
 // }
 
-
 // copied from https://github.com/vuejs/core/blob/44ee43848fe8563c914be6cf731157e360d4e801/packages/shared/src/domTagConfig.ts
 var (
-HTML_TAGS = map[string]struct{}{
-	"html": struct{}{},
-	"body": struct{}{},
-	"base": struct{}{},
-	"head": struct{}{},
-	"link": struct{}{},
-	"meta": struct{}{},
-	"style": struct{}{},
-	"title": struct{}{},
-	"address": struct{}{},
-	"article": struct{}{},
-	"aside": struct{}{},
-	"footer": struct{}{},
-	"header": struct{}{},
-	"hgroup": struct{}{},
-	"h1": struct{}{},
-	"h2": struct{}{},
-	"h3": struct{}{},
-	"h4": struct{}{},
-	"h5": struct{}{},
-	"h6": struct{}{},
-	"nav": struct{}{},
-	"section": struct{}{},
-	"div": struct{}{},
-	"dd": struct{}{},
-	"dl": struct{}{},
-	"dt": struct{}{},
-	"figcaption": struct{}{},
-	"figure": struct{}{},
-	"picture": struct{}{},
-	"hr": struct{}{},
-	"img": struct{}{},
-	"li": struct{}{},
-	"main": struct{}{},
-	"ol": struct{}{},
-	"p": struct{}{},
-	"pre": struct{}{},
-	"ul": struct{}{},
-	"a": struct{}{},
-	"b": struct{}{},
-	"abbr": struct{}{},
-	"bdi": struct{}{},
-	"bdo": struct{}{},
-	"br": struct{}{},
-	"cite": struct{}{},
-	"code": struct{}{},
-	"data": struct{}{},
-	"dfn": struct{}{},
-	"em": struct{}{},
-	"i": struct{}{},
-	"kbd": struct{}{},
-	"mark": struct{}{},
-	"q": struct{}{},
-	"rp": struct{}{},
-	"rt": struct{}{},
-	"ruby": struct{}{},
-	"s": struct{}{},
-	"samp": struct{}{},
-	"small": struct{}{},
-	"span": struct{}{},
-	"strong": struct{}{},
-	"sub": struct{}{},
-	"sup": struct{}{},
-	"time": struct{}{},
-	"u": struct{}{},
-	"var": struct{}{},
-	"wbr": struct{}{},
-	"area": struct{}{},
-	"audio": struct{}{},
-	"map": struct{}{},
-	"track": struct{}{},
-	"video": struct{}{},
-	"embed": struct{}{},
-	"object": struct{}{},
-	"param": struct{}{},
-	"source": struct{}{},
-	"canvas": struct{}{},
-	"script": struct{}{},
-	"noscript": struct{}{},
-	"del": struct{}{},
-	"ins": struct{}{},
-	"caption": struct{}{},
-	"col": struct{}{},
-	"colgroup": struct{}{},
-	"table": struct{}{},
-	"thead": struct{}{},
-	"tbody": struct{}{},
-	"td": struct{}{},
-	"th": struct{}{},
-	"tr": struct{}{},
-	"button": struct{}{},
-	"datalist": struct{}{},
-	"fieldset": struct{}{},
-	"form": struct{}{},
-	"input": struct{}{},
-	"label": struct{}{},
-	"legend": struct{}{},
-	"meter": struct{}{},
-	"optgroup": struct{}{},
-	"option": struct{}{},
-	"output": struct{}{},
-	"progress": struct{}{},
-	"select": struct{}{},
-	"textarea": struct{}{},
-	"details": struct{}{},
-	"dialog": struct{}{},
-	"menu": struct{}{},
-	"summary": struct{}{},
-	"template": struct{}{},
-	"blockquote": struct{}{},
-	"iframe": struct{}{},
-	"tfoot": struct{}{},
-}
+	HTML_TAGS = map[string]struct{}{
+		"html":       struct{}{},
+		"body":       struct{}{},
+		"base":       struct{}{},
+		"head":       struct{}{},
+		"link":       struct{}{},
+		"meta":       struct{}{},
+		"style":      struct{}{},
+		"title":      struct{}{},
+		"address":    struct{}{},
+		"article":    struct{}{},
+		"aside":      struct{}{},
+		"footer":     struct{}{},
+		"header":     struct{}{},
+		"hgroup":     struct{}{},
+		"h1":         struct{}{},
+		"h2":         struct{}{},
+		"h3":         struct{}{},
+		"h4":         struct{}{},
+		"h5":         struct{}{},
+		"h6":         struct{}{},
+		"nav":        struct{}{},
+		"section":    struct{}{},
+		"div":        struct{}{},
+		"dd":         struct{}{},
+		"dl":         struct{}{},
+		"dt":         struct{}{},
+		"figcaption": struct{}{},
+		"figure":     struct{}{},
+		"picture":    struct{}{},
+		"hr":         struct{}{},
+		"img":        struct{}{},
+		"li":         struct{}{},
+		"main":       struct{}{},
+		"ol":         struct{}{},
+		"p":          struct{}{},
+		"pre":        struct{}{},
+		"ul":         struct{}{},
+		"a":          struct{}{},
+		"b":          struct{}{},
+		"abbr":       struct{}{},
+		"bdi":        struct{}{},
+		"bdo":        struct{}{},
+		"br":         struct{}{},
+		"cite":       struct{}{},
+		"code":       struct{}{},
+		"data":       struct{}{},
+		"dfn":        struct{}{},
+		"em":         struct{}{},
+		"i":          struct{}{},
+		"kbd":        struct{}{},
+		"mark":       struct{}{},
+		"q":          struct{}{},
+		"rp":         struct{}{},
+		"rt":         struct{}{},
+		"ruby":       struct{}{},
+		"s":          struct{}{},
+		"samp":       struct{}{},
+		"small":      struct{}{},
+		"span":       struct{}{},
+		"strong":     struct{}{},
+		"sub":        struct{}{},
+		"sup":        struct{}{},
+		"time":       struct{}{},
+		"u":          struct{}{},
+		"var":        struct{}{},
+		"wbr":        struct{}{},
+		"area":       struct{}{},
+		"audio":      struct{}{},
+		"map":        struct{}{},
+		"track":      struct{}{},
+		"video":      struct{}{},
+		"embed":      struct{}{},
+		"object":     struct{}{},
+		"param":      struct{}{},
+		"source":     struct{}{},
+		"canvas":     struct{}{},
+		"script":     struct{}{},
+		"noscript":   struct{}{},
+		"del":        struct{}{},
+		"ins":        struct{}{},
+		"caption":    struct{}{},
+		"col":        struct{}{},
+		"colgroup":   struct{}{},
+		"table":      struct{}{},
+		"thead":      struct{}{},
+		"tbody":      struct{}{},
+		"td":         struct{}{},
+		"th":         struct{}{},
+		"tr":         struct{}{},
+		"button":     struct{}{},
+		"datalist":   struct{}{},
+		"fieldset":   struct{}{},
+		"form":       struct{}{},
+		"input":      struct{}{},
+		"label":      struct{}{},
+		"legend":     struct{}{},
+		"meter":      struct{}{},
+		"optgroup":   struct{}{},
+		"option":     struct{}{},
+		"output":     struct{}{},
+		"progress":   struct{}{},
+		"select":     struct{}{},
+		"textarea":   struct{}{},
+		"details":    struct{}{},
+		"dialog":     struct{}{},
+		"menu":       struct{}{},
+		"summary":    struct{}{},
+		"template":   struct{}{},
+		"blockquote": struct{}{},
+		"iframe":     struct{}{},
+		"tfoot":      struct{}{},
+	}
 
-SVG_TAGS = map[string]struct{}{
-	"svg": struct{}{},
-	"animate": struct{}{},
-	"animateMotion": struct{}{},
-	"animateTransform": struct{}{},
-	"circle": struct{}{},
-	"clipPath": struct{}{},
-	"color-profile": struct{}{},
-	"defs": struct{}{},
-	"desc": struct{}{},
-	"discard": struct{}{},
-	"ellipse": struct{}{},
-	"feBlend": struct{}{},
-	"feColorMatrix": struct{}{},
-	"feComponentTransfer": struct{}{},
-	"feComposite": struct{}{},
-	"feConvolveMatrix": struct{}{},
-	"feDiffuseLighting": struct{}{},
-	"feDisplacementMap": struct{}{},
-	"feDistantLight": struct{}{},
-	"feDropShadow": struct{}{},
-	"feFlood": struct{}{},
-	"feFuncA": struct{}{},
-	"feFuncB": struct{}{},
-	"feFuncG": struct{}{},
-	"feFuncR": struct{}{},
-	"feGaussianBlur": struct{}{},
-	"feImage": struct{}{},
-	"feMerge": struct{}{},
-	"feMergeNode": struct{}{},
-	"feMorphology": struct{}{},
-	"feOffset": struct{}{},
-	"fePointLight": struct{}{},
-	"feSpecularLighting": struct{}{},
-	"feSpotLight": struct{}{},
-	"feTile": struct{}{},
-	"feTurbulence": struct{}{},
-	"filter": struct{}{},
-	"foreignObject": struct{}{},
-	"g": struct{}{},
-	"hatch": struct{}{},
-	"hatchpath": struct{}{},
-	"image": struct{}{},
-	"line": struct{}{},
-	"linearGradient": struct{}{},
-	"marker": struct{}{},
-	"mask": struct{}{},
-	"mesh": struct{}{},
-	"meshgradient": struct{}{},
-	"meshpatch": struct{}{},
-	"meshrow": struct{}{},
-	"metadata": struct{}{},
-	"mpath": struct{}{},
-	"path": struct{}{},
-	"pattern": struct{}{},
-	"polygon": struct{}{},
-	"polyline": struct{}{},
-	"radialGradient": struct{}{},
-	"rect": struct{}{},
-	"set": struct{}{},
-	"solidcolor": struct{}{},
-	"stop": struct{}{},
-	"switch": struct{}{},
-	"symbol": struct{}{},
-	"text": struct{}{},
-	"textPath": struct{}{},
-	"title": struct{}{},
-	"tspan": struct{}{},
-	"unknown": struct{}{},
-	"use": struct{}{},
-	"view": struct{}{},
-}
+	SVG_TAGS = map[string]struct{}{
+		"svg":                 struct{}{},
+		"animate":             struct{}{},
+		"animateMotion":       struct{}{},
+		"animateTransform":    struct{}{},
+		"circle":              struct{}{},
+		"clipPath":            struct{}{},
+		"color-profile":       struct{}{},
+		"defs":                struct{}{},
+		"desc":                struct{}{},
+		"discard":             struct{}{},
+		"ellipse":             struct{}{},
+		"feBlend":             struct{}{},
+		"feColorMatrix":       struct{}{},
+		"feComponentTransfer": struct{}{},
+		"feComposite":         struct{}{},
+		"feConvolveMatrix":    struct{}{},
+		"feDiffuseLighting":   struct{}{},
+		"feDisplacementMap":   struct{}{},
+		"feDistantLight":      struct{}{},
+		"feDropShadow":        struct{}{},
+		"feFlood":             struct{}{},
+		"feFuncA":             struct{}{},
+		"feFuncB":             struct{}{},
+		"feFuncG":             struct{}{},
+		"feFuncR":             struct{}{},
+		"feGaussianBlur":      struct{}{},
+		"feImage":             struct{}{},
+		"feMerge":             struct{}{},
+		"feMergeNode":         struct{}{},
+		"feMorphology":        struct{}{},
+		"feOffset":            struct{}{},
+		"fePointLight":        struct{}{},
+		"feSpecularLighting":  struct{}{},
+		"feSpotLight":         struct{}{},
+		"feTile":              struct{}{},
+		"feTurbulence":        struct{}{},
+		"filter":              struct{}{},
+		"foreignObject":       struct{}{},
+		"g":                   struct{}{},
+		"hatch":               struct{}{},
+		"hatchpath":           struct{}{},
+		"image":               struct{}{},
+		"line":                struct{}{},
+		"linearGradient":      struct{}{},
+		"marker":              struct{}{},
+		"mask":                struct{}{},
+		"mesh":                struct{}{},
+		"meshgradient":        struct{}{},
+		"meshpatch":           struct{}{},
+		"meshrow":             struct{}{},
+		"metadata":            struct{}{},
+		"mpath":               struct{}{},
+		"path":                struct{}{},
+		"pattern":             struct{}{},
+		"polygon":             struct{}{},
+		"polyline":            struct{}{},
+		"radialGradient":      struct{}{},
+		"rect":                struct{}{},
+		"set":                 struct{}{},
+		"solidcolor":          struct{}{},
+		"stop":                struct{}{},
+		"switch":              struct{}{},
+		"symbol":              struct{}{},
+		"text":                struct{}{},
+		"textPath":            struct{}{},
+		"title":               struct{}{},
+		"tspan":               struct{}{},
+		"unknown":             struct{}{},
+		"use":                 struct{}{},
+		"view":                struct{}{},
+	}
 
-MATH_TAGS = map[string]struct{}{
-	"annotation": struct{}{},
-	"annotation-xml": struct{}{},
-	"maction": struct{}{},
-	"maligngroup": struct{}{},
-	"malignmark": struct{}{},
-	"math": struct{}{},
-	"menclose": struct{}{},
-	"merror": struct{}{},
-	"mfenced": struct{}{},
-	"mfrac": struct{}{},
-	"mfraction": struct{}{},
-	"mglyph": struct{}{},
-	"mi": struct{}{},
-	"mlabeledtr": struct{}{},
-	"mlongdiv": struct{}{},
-	"mmultiscripts": struct{}{},
-	"mn": struct{}{},
-	"mo": struct{}{},
-	"mover": struct{}{},
-	"mpadded": struct{}{},
-	"mphantom": struct{}{},
-	"mprescripts": struct{}{},
-	"mroot": struct{}{},
-	"mrow": struct{}{},
-	"ms": struct{}{},
-	"mscarries": struct{}{},
-	"mscarry": struct{}{},
-	"msgroup": struct{}{},
-	"msline": struct{}{},
-	"mspace": struct{}{},
-	"msqrt": struct{}{},
-	"msrow": struct{}{},
-	"mstack": struct{}{},
-	"mstyle": struct{}{},
-	"msub": struct{}{},
-	"msubsup": struct{}{},
-	"msup": struct{}{},
-	"mtable": struct{}{},
-	"mtd": struct{}{},
-	"mtext": struct{}{},
-	"mtr": struct{}{},
-	"munder": struct{}{},
-	"munderover": struct{}{},
-	"none": struct{}{},
-	"semantics": struct{}{},
-}
+	MATH_TAGS = map[string]struct{}{
+		"annotation":     struct{}{},
+		"annotation-xml": struct{}{},
+		"maction":        struct{}{},
+		"maligngroup":    struct{}{},
+		"malignmark":     struct{}{},
+		"math":           struct{}{},
+		"menclose":       struct{}{},
+		"merror":         struct{}{},
+		"mfenced":        struct{}{},
+		"mfrac":          struct{}{},
+		"mfraction":      struct{}{},
+		"mglyph":         struct{}{},
+		"mi":             struct{}{},
+		"mlabeledtr":     struct{}{},
+		"mlongdiv":       struct{}{},
+		"mmultiscripts":  struct{}{},
+		"mn":             struct{}{},
+		"mo":             struct{}{},
+		"mover":          struct{}{},
+		"mpadded":        struct{}{},
+		"mphantom":       struct{}{},
+		"mprescripts":    struct{}{},
+		"mroot":          struct{}{},
+		"mrow":           struct{}{},
+		"ms":             struct{}{},
+		"mscarries":      struct{}{},
+		"mscarry":        struct{}{},
+		"msgroup":        struct{}{},
+		"msline":         struct{}{},
+		"mspace":         struct{}{},
+		"msqrt":          struct{}{},
+		"msrow":          struct{}{},
+		"mstack":         struct{}{},
+		"mstyle":         struct{}{},
+		"msub":           struct{}{},
+		"msubsup":        struct{}{},
+		"msup":           struct{}{},
+		"mtable":         struct{}{},
+		"mtd":            struct{}{},
+		"mtext":          struct{}{},
+		"mtr":            struct{}{},
+		"munder":         struct{}{},
+		"munderover":     struct{}{},
+		"none":           struct{}{},
+		"semantics":      struct{}{},
+	}
 
-VOID_TAGS = map[string]struct{}{
-	"area": struct{}{},
-	"base": struct{}{},
-	"br": struct{}{},
-	"col": struct{}{},
-	"embed": struct{}{},
-	"hr": struct{}{},
-	"img": struct{}{},
-	"input": struct{}{},
-	"link": struct{}{},
-	"meta": struct{}{},
-	"param": struct{}{},
-	"source": struct{}{},
-	"track": struct{}{},
-	"wbr": struct{}{},
-}
+	VOID_TAGS = map[string]struct{}{
+		"area":   struct{}{},
+		"base":   struct{}{},
+		"br":     struct{}{},
+		"col":    struct{}{},
+		"embed":  struct{}{},
+		"hr":     struct{}{},
+		"img":    struct{}{},
+		"input":  struct{}{},
+		"link":   struct{}{},
+		"meta":   struct{}{},
+		"param":  struct{}{},
+		"source": struct{}{},
+		"track":  struct{}{},
+		"wbr":    struct{}{},
+	}
 )
 
 func parseTsAst(source string) *ast.SourceFile {
 	file := parser.ParseSourceFile(ast.SourceFileParseOptions{
 		FileName: "/virtual.tsx",
-		Path: tspath.Path("/virtual.tsx"),
+		Path:     tspath.Path("/virtual.tsx"),
 		CompilerOptions: core.SourceFileAffectingCompilerOptions{
 			BindInStrictMode: true,
 		},

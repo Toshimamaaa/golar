@@ -10,6 +10,7 @@ import (
 type templateCodegenCtx struct {
 	*codegenCtx
 }
+
 func generateTemplate(base *codegenCtx, el *vue_ast.ElementNode) {
 	c := templateCodegenCtx{
 		codegenCtx: base,
@@ -33,6 +34,7 @@ func (c *templateCodegenCtx) shouldPrefixIdentifier(identifier *ast.Node) bool {
 }
 
 type conditionalChain uint8
+
 const (
 	conditionalChainNone conditionalChain = iota
 	conditionalChainValid
@@ -139,28 +141,27 @@ func (c *templateCodegenCtx) visit(el *vue_ast.ElementNode) {
 	}
 }
 
-
 func (c *templateCodegenCtx) genExpressionWithPrefixedIdentifiers(expr *vue_ast.SimpleExpressionNode) {
 	innerStart := expr.Loc.Pos() - expr.PrefixLen
 	lastEnd := expr.Loc.Pos()
 	var visitor ast.Visitor
-	visitor = func (node *ast.Node) bool {
+	visitor = func(node *ast.Node) bool {
 		switch node.Kind {
 		case ast.KindIdentifier:
 			if c.shouldPrefixIdentifier(node) {
-				c.mapText(lastEnd, innerStart + node.Pos())
+				c.mapText(lastEnd, innerStart+node.Pos())
 				c.serviceText.WriteString(" __VLS_Ctx.")
-				c.mapText(innerStart + node.Pos(), innerStart + node.End())
+				c.mapText(innerStart+node.Pos(), innerStart+node.End())
 				lastEnd = innerStart + node.End()
 			}
 			return false
 		case ast.KindShorthandPropertyAssignment:
 			name := node.Name()
 			if c.shouldPrefixIdentifier(name) {
-				c.mapText(lastEnd, innerStart + node.Pos())
+				c.mapText(lastEnd, innerStart+node.Pos())
 				c.serviceText.WriteString(name.Text())
 				c.serviceText.WriteString(": __VLS_Ctx.")
-				c.mapText(innerStart + node.Pos(), innerStart + node.End())
+				c.mapText(innerStart+node.Pos(), innerStart+node.End())
 				lastEnd = innerStart + node.End()
 			}
 			return false

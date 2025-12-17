@@ -9,9 +9,9 @@ import (
 
 	"github.com/microsoft/typescript-go/shim/ast"
 	"github.com/microsoft/typescript-go/shim/compiler"
-	"github.com/microsoft/typescript-go/shim/golarext"
 	"github.com/microsoft/typescript-go/shim/core"
 	"github.com/microsoft/typescript-go/shim/diagnosticwriter"
+	"github.com/microsoft/typescript-go/shim/golarext"
 	"github.com/microsoft/typescript-go/shim/parser"
 )
 
@@ -146,7 +146,7 @@ func servicePosToSource(file *ast.SourceFile, pos int) int {
 		return pos
 	}
 	for _, m := range file.GolarLanguageData.(languageData).mappings {
-		if m.ServiceOffset <= pos && pos < m.ServiceOffset + m.Length {
+		if m.ServiceOffset <= pos && pos < m.ServiceOffset+m.Length {
 			return pos - m.ServiceOffset + m.SourceOffset
 		}
 	}
@@ -186,9 +186,9 @@ func adjustDiagnostic(file *ast.SourceFile, diagnostic *ast.Diagnostic) *ast.Dia
 
 	servicePos := diagnostic.Pos()
 	for _, m := range file.GolarLanguageData.(languageData).mappings {
-		if m.ServiceOffset <= servicePos && servicePos < m.ServiceOffset + m.Length {
+		if m.ServiceOffset <= servicePos && servicePos < m.ServiceOffset+m.Length {
 			pos := servicePos - m.ServiceOffset + m.SourceOffset
-			diagnostic.SetLocation(core.NewTextRange(pos, pos + diagnostic.Len()))
+			diagnostic.SetLocation(core.NewTextRange(pos, pos+diagnostic.Len()))
 			break
 		}
 	}
@@ -202,7 +202,7 @@ func positionToService(file *ast.SourceFile, pos int) int {
 	}
 
 	for _, m := range file.GolarLanguageData.(languageData).mappings {
-		if m.SourceOffset <= pos && pos < m.SourceOffset + m.Length {
+		if m.SourceOffset <= pos && pos < m.SourceOffset+m.Length {
 			return pos - m.SourceOffset + m.ServiceOffset
 		}
 	}
@@ -215,7 +215,7 @@ func positionToSource(file *ast.SourceFile, pos int) int {
 	}
 
 	for _, m := range file.GolarLanguageData.(languageData).mappings {
-		if m.ServiceOffset <= pos && pos < m.ServiceOffset + m.Length {
+		if m.ServiceOffset <= pos && pos < m.ServiceOffset+m.Length {
 			return pos - m.ServiceOffset + m.SourceOffset
 		}
 	}
@@ -224,11 +224,10 @@ func positionToSource(file *ast.SourceFile, pos int) int {
 }
 
 var GolarExtCallbacks = &golarext.GolarCallbacks{
-	AdjustDiagnostic: adjustDiagnostic,
+	AdjustDiagnostic:  adjustDiagnostic,
 	PositionToService: positionToService,
-	PositionToSource: positionToSource,
-	WrapCompilerHost: wrapCompilerHost,
+	PositionToSource:  positionToSource,
+	WrapCompilerHost:  wrapCompilerHost,
 	WrapASTDiagnostic: wrapASTDiagnostic,
-	ParseSourceFile: parseFile,
+	ParseSourceFile:   parseFile,
 }
-

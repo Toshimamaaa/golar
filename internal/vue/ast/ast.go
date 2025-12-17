@@ -8,28 +8,27 @@ import (
 type Namespace uint8
 
 const (
-  NamespaceHTML Namespace = iota
-  NamespaceSVG
-  NamespaceMATH_ML
+	NamespaceHTML Namespace = iota
+	NamespaceSVG
+	NamespaceMATH_ML
 )
-
 
 type NodeType uint16
 
 const (
-  NodeTypeROOT NodeType = iota
-  NodeTypeELEMENT
-  NodeTypeTEXT
-  NodeTypeCOMMENT
-  NodeTypeSIMPLE_EXPRESSION
-  NodeTypeINTERPOLATION
-  NodeTypeATTRIBUTE
-  NodeTypeDIRECTIVE
+	NodeTypeROOT NodeType = iota
+	NodeTypeELEMENT
+	NodeTypeTEXT
+	NodeTypeCOMMENT
+	NodeTypeSIMPLE_EXPRESSION
+	NodeTypeINTERPOLATION
+	NodeTypeATTRIBUTE
+	NodeTypeDIRECTIVE
 )
 
 type Node struct {
 	Type NodeType
-	Loc core.TextRange
+	Loc  core.TextRange
 	data nodeData
 }
 
@@ -41,19 +40,18 @@ func (n *Node) AsNode() *Node {
 	return n
 }
 
-
 type ElementType uint8
 
 const (
-  ElementTypeELEMENT ElementType = iota
-  ElementTypeCOMPONENT
-  ElementTypeSLOT
-  ElementTypeTEMPLATE
+	ElementTypeELEMENT ElementType = iota
+	ElementTypeCOMPONENT
+	ElementTypeSLOT
+	ElementTypeTEMPLATE
 )
 
 type RootNode struct {
 	Node
-  Children []*Node // TemplateChildNode[]
+	Children []*Node // TemplateChildNode[]
 }
 
 func NewRootNode() *RootNode {
@@ -64,12 +62,12 @@ func NewRootNode() *RootNode {
 
 type ElementNode struct {
 	Node
-  Ns Namespace
-  Tag string
-  TagType ElementType
-  Props []*Node // Array<AttributeNode | DirectiveNode>
-  Children []*Node // TemplateChildNode[]
-  IsSelfClosing bool
+	Ns            Namespace
+	Tag           string
+	TagType       ElementType
+	Props         []*Node // Array<AttributeNode | DirectiveNode>
+	Children      []*Node // TemplateChildNode[]
+	IsSelfClosing bool
 	// Only for <script>
 	Ast *ast.SourceFile
 	// Only for SFC root level elements
@@ -88,7 +86,7 @@ type ScriptElementNode struct {
 
 type TextNode struct {
 	Node
-  Content string
+	Content string
 }
 
 func NewTextNode(content string, loc core.TextRange) *TextNode {
@@ -99,14 +97,14 @@ func NewTextNode(content string, loc core.TextRange) *TextNode {
 
 type SimpleExpressionNode struct {
 	Node
-  Content string
+	Content string
 	// TODO: right now we don't have simple identifier path
 	// nil when expression is a simple identifier (static) or when empty
 	Ast *ast.SourceFile
 	// TODO: modify TS parser to parse expressions instead?
 	PrefixLen int
 	// TODO
-  // isHandlerKey?: boolean
+	// isHandlerKey?: boolean
 }
 
 func NewSimpleExpressionNode(content string, ast *ast.SourceFile, loc core.TextRange, prefixLen int) *SimpleExpressionNode {
@@ -117,7 +115,7 @@ func NewSimpleExpressionNode(content string, ast *ast.SourceFile, loc core.TextR
 
 type CommentNode struct {
 	Node
-  Content string
+	Content string
 }
 
 func NewCommentNode(content string, loc core.TextRange) *CommentNode {
@@ -128,9 +126,9 @@ func NewCommentNode(content string, loc core.TextRange) *CommentNode {
 
 type AttributeNode struct {
 	Node
-  Name string
-  NameLoc core.TextRange
-  Value *TextNode // | undefined
+	Name    string
+	NameLoc core.TextRange
+	Value   *TextNode // | undefined
 }
 
 func NewAttributeNode(name string, nameLoc, loc core.TextRange) *AttributeNode {
@@ -141,16 +139,16 @@ func NewAttributeNode(name string, nameLoc, loc core.TextRange) *AttributeNode {
 
 type DirectiveNode struct {
 	Node
-  // The normalized name without prefix or shorthands, e.g. "bind", "on"
-  Name string
-  // The raw attribute name, preserving shorthand, and including arg & modifiers
-  // this is only used during parse.
+	// The normalized name without prefix or shorthands, e.g. "bind", "on"
+	Name string
+	// The raw attribute name, preserving shorthand, and including arg & modifiers
+	// this is only used during parse.
 	RawName string
 	NameLoc core.TextRange
 	// Nil when directive doesn't have expression
-  Expression *SimpleExpressionNode
-  // arg ExpressionNode | undefined
-  // modifiers: SimpleExpressionNode[]
+	Expression *SimpleExpressionNode
+	// arg ExpressionNode | undefined
+	// modifiers: SimpleExpressionNode[]
 }
 
 func NewDirectiveNode(name, rawName string, nameLoc, loc core.TextRange) *DirectiveNode {
@@ -158,7 +156,6 @@ func NewDirectiveNode(name, rawName string, nameLoc, loc core.TextRange) *Direct
 	data.Node.data = &data
 	return &data
 }
-
 
 type InterpolationNode struct {
 	Node

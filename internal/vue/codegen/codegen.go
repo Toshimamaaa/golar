@@ -20,7 +20,7 @@ func Codegen(sourceText string, root *vue_ast.RootNode) (string, []mapping.Mappi
 
 RootChild:
 	for _, child := range root.Children {
-		if child.Type != vue_ast.NodeTypeELEMENT {
+		if child.Kind != vue_ast.KindElement {
 			continue
 		}
 
@@ -28,7 +28,7 @@ RootChild:
 
 		if el.Tag == "script" {
 			for _, prop := range el.Props {
-				if prop.Type == vue_ast.NodeTypeATTRIBUTE {
+				if prop.Kind == vue_ast.KindAttribute {
 					attr := prop.AsAttribute()
 					if attr.Name == "setup" {
 						if scriptSetupEl != nil {

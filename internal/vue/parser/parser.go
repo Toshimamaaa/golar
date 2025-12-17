@@ -1,6 +1,7 @@
 package vue_parser
 
 import (
+	"regexp"
 	"slices"
 	"strings"
 	"unicode"
@@ -110,7 +111,7 @@ func (p *Parser) oninterpolation(start int, end int) {
 	// 	}
 	// }
 
-	exp := vue_ast.NewSimpleExpressionNode(expContent, parseTsAst(expContent), core.NewTextRange(innerStart, innerEnd), 0)
+	exp := vue_ast.NewSimpleExpressionNode(parseTsAst(expContent), core.NewTextRange(innerStart, innerEnd), 0)
 
 	p.addNode(vue_ast.NewInterpolationNode(
 		exp,
@@ -238,7 +239,7 @@ func (p *Parser) ondirname(start int, end int) {
 			// TODO:
 			// props := currentOpenTag.props
 			// for i := 0; i < len(props); i++ {
-			// 	if props[i].type == vue_ast.NodeTypeDIRECTIVE {
+			// 	if props[i].type == vue_ast.KindDirective {
 			// 		props[i] = dirToAttr(props[i] as DirectiveNode)
 			// 	}
 			// }
@@ -247,7 +248,7 @@ func (p *Parser) ondirname(start int, end int) {
 }
 
 func isVPre(p *vue_ast.Node) bool {
-	return p.Type == vue_ast.NodeTypeDIRECTIVE && p.AsDirective().Name == "pre"
+	return p.Kind == vue_ast.KindDirective && p.AsDirective().Name == "pre"
 }
 
 func (p *Parser) ondirarg(start int, end int) {
@@ -315,13 +316,13 @@ func (p *Parser) onattribentity(char string, start int, end int) {
 func (p *Parser) onattribnameend(end int) {
 	start := p.currentProp.Loc.Pos()
 	name := p.sourceText[start:end]
-	if p.currentProp.Type == vue_ast.NodeTypeDIRECTIVE {
+	if p.currentProp.Kind == vue_ast.KindDirective {
 		p.currentProp.AsDirective().RawName = name
 	}
 	// check duplicate attrs
 	// TODO:
 	// if 	// 	currentOpenTag!.props.some(
-	// 		p => (p.type == vue_ast.NodeTypeDIRECTIVE ? p.rawName : p.name) == name,
+	// 		p => (p.type == vue_ast.KindDirective ? p.rawName : p.name) == name,
 	// 	)
 	//  {
 	// 	emitError(ErrorCodes.DUPLICATE_ATTRIBUTE, start)
@@ -334,7 +335,7 @@ func (p *Parser) onattribend(quote QuoteType, end int) {
 		p.currentProp.Loc = p.currentProp.Loc.WithEnd(end)
 
 		if quote != QuoteTypeNoValue {
-			if p.currentProp.Type == vue_ast.NodeTypeATTRIBUTE {
+			if p.currentProp.Kind == vue_ast.KindAttribute {
 				// assign value
 
 				prop := p.currentProp.AsAttribute()
@@ -396,7 +397,7 @@ func (p *Parser) onattribend(quote QuoteType, end int) {
 						prefixLen = 1
 						expressionText = "(" + p.currentAttrValue + ")"
 					}
-					prop.Expression = vue_ast.NewSimpleExpressionNode(p.currentAttrValue, parseTsAst(
+					prop.Expression = vue_ast.NewSimpleExpressionNode(parseTsAst(
 						expressionText,
 					), core.NewTextRange(p.currentAttrStartIndex, p.currentAttrEndIndex), prefixLen)
 				}
@@ -422,7 +423,7 @@ func (p *Parser) onattribend(quote QuoteType, end int) {
 				// }
 			}
 		}
-		if p.currentProp.Type != vue_ast.NodeTypeDIRECTIVE ||
+		if p.currentProp.Kind != vue_ast.KindDirective ||
 			p.currentProp.AsDirective().Name != "pre" {
 			p.currentOpenTag.Props = append(p.currentOpenTag.Props, p.currentProp)
 		}
@@ -594,7 +595,7 @@ func (p *Parser) onText(content string, start, end int) {
 	if len(p.stack) > 0 {
 		children = p.stack[0].Children
 	}
-	if len(children) > 0 && children[len(children)-1].Type == vue_ast.NodeTypeTEXT {
+	if len(children) > 0 && children[len(children)-1].Kind == vue_ast.KindText {
 		lastNode := children[len(children)-1].AsText()
 		// merge
 		lastNode.Content += content
@@ -658,7 +659,7 @@ func (p *Parser) onCloseTag(el *vue_ast.ElementNode, end int, isImplied bool) {
 	// 	// remove leading newline for <textarea> and <pre> per html spec
 	// 	// https://html.spec.whatwg.org/multipage/parsing.html#parsing-main-inbody
 	// 	first := children[0]
-	// 	if first && first.Type == vue_ast.NodeTypeTEXT {
+	// 	if first && first.Type == vue_ast.KindText {
 	// 		// TODO:
 	// 		// first.content = first.content.replace(/^\r?\n/, "")
 	// 	}
@@ -681,6 +682,8 @@ func (p *Parser) onCloseTag(el *vue_ast.ElementNode, end int, isImplied bool) {
 	// 	tokenizer.inXML = false
 	// }
 }
+
+
 
 func (p *Parser) lookAhead(index int, c rune) int {
 	for off, r := range p.sourceText[index:] {
@@ -712,7 +715,7 @@ func isUpperCase(c rune) bool {
 // 	removedWhitespace := false
 // 	for i := 0; i < len(nodes); i++ {
 // 		node := nodes[i]
-// 		if node.type == vue_ast.NodeTypeTEXT {
+// 		if node.type == vue_ast.KindText {
 // 			if !inPre {
 // 				if isAllWhitespace(node.content) {
 // 					prev := nodes[i - 1] && nodes[i - 1].type
@@ -725,11 +728,11 @@ func isUpperCase(c rune) bool {
 // 					if !prev ||
 // 						!next ||
 // 						(shouldCondense &&
-// 							((prev == vue_ast.NodeTypeCOMMENT &&
-// 								(next == vue_ast.NodeTypeCOMMENT || next == vue_ast.NodeTypeELEMENT)) ||
-// 								(prev == vue_ast.NodeTypeELEMENT &&
-// 									(next == vue_ast.NodeTypeCOMMENT ||
-// 										(next == vue_ast.NodeTypeELEMENT &&
+// 							((prev == vue_ast.KindComment &&
+// 								(next == vue_ast.KindComment || next == vue_ast.NodeTypeELEMENT)) ||
+// 								(prev == vue_ast.KindElement &&
+// 									(next == vue_ast.KindComment ||
+// 										(next == vue_ast.KindElement &&
 // 											hasNewlineChar(node.content)))))) {
 // 						removedWhitespace = true
 // 						nodes[i] = null as any
@@ -784,7 +787,7 @@ func condense(s string) string {
 
 // function dirToAttr(dir: DirectiveNode): AttributeNode {
 // 	attr: AttributeNode := {
-// 		type: vue_ast.NodeTypeATTRIBUTE,
+// 		type: vue_ast.KindAttribute,
 // 		name: dir.rawName!,
 // 		nameLoc: getLoc(
 // 			dir.loc.start.offset,
@@ -803,7 +806,7 @@ func condense(s string) string {
 // 			loc.end.column++
 // 		}
 // 		attr.value = {
-// 			type: vue_ast.NodeTypeTEXT,
+// 			type: vue_ast.KindText,
 // 			content: (dir.exp as SimpleExpressionNode).content,
 // 			loc,
 // 		}

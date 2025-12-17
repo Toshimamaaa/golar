@@ -16,18 +16,18 @@ const (
 type NodeType uint16
 
 const (
-	NodeTypeROOT NodeType = iota
-	NodeTypeELEMENT
-	NodeTypeTEXT
-	NodeTypeCOMMENT
-	NodeTypeSIMPLE_EXPRESSION
-	NodeTypeINTERPOLATION
-	NodeTypeATTRIBUTE
-	NodeTypeDIRECTIVE
+	KindRoot NodeType = iota
+	KindElement
+	KindText
+	KindComment
+	KindSimple_expression
+	KindInterpolation
+	KindAttribute
+	KindDirective
 )
 
 type Node struct {
-	Type NodeType
+	Kind NodeType
 	Loc  core.TextRange
 	data nodeData
 }
@@ -55,7 +55,7 @@ type RootNode struct {
 }
 
 func NewRootNode() *RootNode {
-	data := RootNode{Node: Node{Type: NodeTypeROOT}}
+	data := RootNode{Node: Node{Kind: KindRoot}}
 	data.Node.data = &data
 	return &data
 }
@@ -64,7 +64,7 @@ type ElementNode struct {
 	Node
 	Ns            Namespace
 	Tag           string
-	TagType       ElementType
+	// TagType       ElementType
 	Props         []*Node // Array<AttributeNode | DirectiveNode>
 	Children      []*Node // TemplateChildNode[]
 	IsSelfClosing bool
@@ -75,7 +75,7 @@ type ElementNode struct {
 }
 
 func NewElementNode(ns Namespace, tag string, loc core.TextRange) *ElementNode {
-	data := ElementNode{Node: Node{Type: NodeTypeELEMENT, Loc: loc}, Ns: ns, Tag: tag}
+	data := ElementNode{Node: Node{Kind: KindElement, Loc: loc}, Ns: ns, Tag: tag}
 	data.Node.data = &data
 	return &data
 }
@@ -90,14 +90,13 @@ type TextNode struct {
 }
 
 func NewTextNode(content string, loc core.TextRange) *TextNode {
-	data := TextNode{Node: Node{Type: NodeTypeTEXT, Loc: loc}, Content: content}
+	data := TextNode{Node: Node{Kind: KindText, Loc: loc}, Content: content}
 	data.Node.data = &data
 	return &data
 }
 
 type SimpleExpressionNode struct {
 	Node
-	Content string
 	// TODO: right now we don't have simple identifier path
 	// nil when expression is a simple identifier (static) or when empty
 	Ast *ast.SourceFile
@@ -107,8 +106,8 @@ type SimpleExpressionNode struct {
 	// isHandlerKey?: boolean
 }
 
-func NewSimpleExpressionNode(content string, ast *ast.SourceFile, loc core.TextRange, prefixLen int) *SimpleExpressionNode {
-	data := SimpleExpressionNode{Node: Node{Type: NodeTypeSIMPLE_EXPRESSION, Loc: loc}, Content: content, Ast: ast, PrefixLen: prefixLen}
+func NewSimpleExpressionNode(ast *ast.SourceFile, loc core.TextRange, prefixLen int) *SimpleExpressionNode {
+	data := SimpleExpressionNode{Node: Node{Kind: KindSimple_expression, Loc: loc}, Ast: ast, PrefixLen: prefixLen}
 	data.Node.data = &data
 	return &data
 }
@@ -119,7 +118,7 @@ type CommentNode struct {
 }
 
 func NewCommentNode(content string, loc core.TextRange) *CommentNode {
-	data := CommentNode{Node: Node{Type: NodeTypeCOMMENT, Loc: loc}, Content: content}
+	data := CommentNode{Node: Node{Kind: KindComment, Loc: loc}, Content: content}
 	data.Node.data = &data
 	return &data
 }
@@ -132,7 +131,7 @@ type AttributeNode struct {
 }
 
 func NewAttributeNode(name string, nameLoc, loc core.TextRange) *AttributeNode {
-	data := AttributeNode{Node: Node{Type: NodeTypeATTRIBUTE, Loc: loc}, Name: name, NameLoc: nameLoc}
+	data := AttributeNode{Node: Node{Kind: KindAttribute, Loc: loc}, Name: name, NameLoc: nameLoc}
 	data.Node.data = &data
 	return &data
 }
@@ -152,7 +151,7 @@ type DirectiveNode struct {
 }
 
 func NewDirectiveNode(name, rawName string, nameLoc, loc core.TextRange) *DirectiveNode {
-	data := DirectiveNode{Node: Node{Type: NodeTypeDIRECTIVE, Loc: loc}, Name: name, RawName: rawName, NameLoc: nameLoc}
+	data := DirectiveNode{Node: Node{Kind: KindDirective, Loc: loc}, Name: name, RawName: rawName, NameLoc: nameLoc}
 	data.Node.data = &data
 	return &data
 }
@@ -163,7 +162,7 @@ type InterpolationNode struct {
 }
 
 func NewInterpolationNode(content *SimpleExpressionNode, loc core.TextRange) *InterpolationNode {
-	data := InterpolationNode{Node: Node{Type: NodeTypeINTERPOLATION, Loc: loc}, Content: content}
+	data := InterpolationNode{Node: Node{Kind: KindInterpolation, Loc: loc}, Content: content}
 	data.Node.data = &data
 	return &data
 }

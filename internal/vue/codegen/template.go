@@ -44,8 +44,8 @@ const (
 func (c *templateCodegenCtx) visit(el *vue_ast.ElementNode) {
 	condChain := conditionalChainNone
 	for _, child := range el.Children {
-		switch child.Type {
-		case vue_ast.NodeTypeELEMENT:
+		switch child.Kind {
+		case vue_ast.KindElement:
 			elem := child.AsElement()
 
 			var conditionalDirective *vue_ast.DirectiveNode
@@ -53,7 +53,7 @@ func (c *templateCodegenCtx) visit(el *vue_ast.ElementNode) {
 			hasSeenConditionalDirective := false
 
 			for _, p := range elem.Props {
-				if p.Type != vue_ast.NodeTypeDIRECTIVE {
+				if p.Kind != vue_ast.KindDirective {
 					attr := p.AsAttribute()
 					if seenProps.Has(attr.Name) {
 						c.reportDiagnostic(attr.NameLoc, vue_diagnostics.Elements_cannot_have_multiple_X_0_with_the_same_name, "attributes")
@@ -132,7 +132,7 @@ func (c *templateCodegenCtx) visit(el *vue_ast.ElementNode) {
 				}
 				c.visit(elem)
 			}
-		case vue_ast.NodeTypeINTERPOLATION:
+		case vue_ast.KindInterpolation:
 			interpolation := child.AsInterpolation()
 			c.serviceText.WriteString(";( ")
 			c.genExpressionWithPrefixedIdentifiers(interpolation.Content)

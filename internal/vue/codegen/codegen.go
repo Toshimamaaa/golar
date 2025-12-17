@@ -3,20 +3,15 @@ package vue_codegen
 import (
 	"strings"
 
+	"github.com/auvred/golar/internal/mapping"
 	"github.com/auvred/golar/internal/vue/ast"
-	vue_diagnostics "github.com/auvred/golar/internal/vue/diagnostics"
+	"github.com/auvred/golar/internal/vue/diagnostics"
 	"github.com/microsoft/typescript-go/shim/ast"
 	"github.com/microsoft/typescript-go/shim/core"
 	"github.com/microsoft/typescript-go/shim/diagnostics"
 )
 
-type Mapping struct {
-	SourceOffset  int
-	ServiceOffset int
-	Length        int
-}
-
-func Codegen(sourceText string, root *vue_ast.RootNode) (string, []Mapping, []*ast.Diagnostic) {
+func Codegen(sourceText string, root *vue_ast.RootNode) (string, []mapping.Mapping, []*ast.Diagnostic) {
 	ctx := newCodegenCtx(root, sourceText)
 
 	var scriptEl *vue_ast.ElementNode
@@ -112,7 +107,7 @@ type codegenCtx struct {
 	ast         *vue_ast.RootNode
 	sourceText  string
 	serviceText strings.Builder
-	mappings    []Mapping
+	mappings    []mapping.Mapping
 	diagnostics []*ast.Diagnostic
 }
 
@@ -121,7 +116,7 @@ func newCodegenCtx(root *vue_ast.RootNode, sourceText string) codegenCtx {
 		ast:         root,
 		sourceText:  sourceText,
 		serviceText: strings.Builder{},
-		mappings:    []Mapping{},
+		mappings:    []mapping.Mapping{},
 		diagnostics: []*ast.Diagnostic{},
 	}
 }
@@ -133,7 +128,7 @@ func (c *codegenCtx) reportDiagnostic(loc core.TextRange, message *diagnostics.M
 func (c *codegenCtx) mapText(from, to int) {
 	serviceOffset := c.serviceText.Len()
 	c.serviceText.WriteString(c.sourceText[from:to])
-	c.mappings = append(c.mappings, Mapping{
+	c.mappings = append(c.mappings, mapping.Mapping{
 		SourceOffset:  from,
 		ServiceOffset: serviceOffset,
 		Length:        to - from,

@@ -111,7 +111,7 @@ func (p *Parser) oninterpolation(start int, end int) {
 	// 	}
 	// }
 
-	exp := vue_ast.NewSimpleExpressionNode(parseTsAst(expContent), core.NewTextRange(innerStart, innerEnd), 0)
+	exp := vue_ast.NewSimpleExpressionNode(ParseTsAst(expContent), core.NewTextRange(innerStart, innerEnd), 0, 0)
 
 	p.addNode(vue_ast.NewInterpolationNode(
 		exp,
@@ -381,25 +381,37 @@ func (p *Parser) onattribend(quote QuoteType, end int) {
 				// 	}
 				// }
 				prop := p.currentProp.AsDirective()
-				if len(utils.TrimWhiteSpaceOrLineTerminator(p.currentAttrValue)) == 0 {
-					prop.Expression = vue_ast.NewSimpleExpressionNode(p.currentAttrValue, nil, core.NewTextRange(p.currentAttrStartIndex, p.currentAttrEndIndex), 0)
+				trimmedValue, _, _ := utils.TrimWhiteSpaceOrLineTerminator(p.currentAttrValue)
+				isValueEmpty := len(trimmedValue) == 0
+				isVFor := prop.Name == "for"
+				if isValueEmpty || isVFor {
+					prop.Expression = vue_ast.NewSimpleExpressionNode(nil, core.NewTextRange(p.currentAttrStartIndex, p.currentAttrEndIndex), 0, 0)
+					if isVFor {
+						prop.ForParseResult = parseForExpression(
+							p.currentAttrValue,
+							prop.Expression.Loc,
+						)
+						if prop.ForParseResult == nil {
+							p.emitError("v-for has invalid expression", p.currentAttrStartIndex)
+						}
+					}
 				} else {
 					var prefixLen int
+					var suffixLen int
 					var expressionText string
 					switch prop.Name {
-					case "for":
-						panic("TODO: v-for")
 					case "slot":
 						panic("TODO: v-slot")
 					case "on":
 						panic("TODO: v-on")
 					default:
 						prefixLen = 1
+						suffixLen = 1
 						expressionText = "(" + p.currentAttrValue + ")"
 					}
-					prop.Expression = vue_ast.NewSimpleExpressionNode(parseTsAst(
+					prop.Expression = vue_ast.NewSimpleExpressionNode(ParseTsAst(
 						expressionText,
-					), core.NewTextRange(p.currentAttrStartIndex, p.currentAttrEndIndex), prefixLen)
+					), core.NewTextRange(p.currentAttrStartIndex, p.currentAttrEndIndex), prefixLen, suffixLen)
 				}
 				// if currentProp.name == "for" {
 				// 	currentProp.forParseResult = parseForExpression(currentProp.exp)
@@ -512,83 +524,95 @@ func (p *Parser) onprocessinginstruction(start int, endIndex int) {
 	}
 }
 
+// https://github.com/vuejs/core/blob/d8a2de44859bdea7fad6a939ae3dbb651527045f/packages/compiler-core/src/utils.ts#L571
+var forAliasRE = regexp.MustCompile(`([\s\S]*?)\s+(?:in|of)\s+(\S[\s\S]*)`)
+
+// https://github.com/vuejs/core/blob/d8a2de44859bdea7fad6a939ae3dbb651527045f/packages/compiler-core/src/parser.ts#L493
 // This regex doesn't cover the case if key or index aliases have destructuring,
 // but those do not make sense in the first place, so this works in practice.
-// forIteratorRE := /,([^,\}\]]*)(?:,([^,\}\]]*))?$/
-// stripParensRE := /^\(|\)$/g
+var forIteratorRE = regexp.MustCompile(`,([^,\}\]]*)(?:,([^,\}\]]*))?$`)
 
-// function parseForExpression(
-// 	input: SimpleExpressionNode,
-// ): ForParseResult | undefined {
-// 	loc := input.loc
-// 	exp := input.content
-// 	inMatch := exp.match(forAliasRE)
-// 	if !inMatch return
-//
-// 	[, LHS, RHS] := inMatch
-//
-// 	createAliasExpression := (
-// 		content: string,
-// 		offset: number,
-// 		asParam = false,
-// 	) => {
-// 		start := loc.start.offset + offset
-// 		end := start + len(content)
-// 		return createExp(
-// 			content,
-// 			false,
-// 			getLoc(start, end),
-// 			ConstantTypes.NOT_CONSTANT,
-// 			asParam ? ExpParseMode.Params : ExpParseMode.Normal,
-// 		)
-// 	}
-//
-// 	result: ForParseResult := {
-// 		source: createAliasExpression(RHS.trim(), exp.indexOf(RHS, len(LHS))),
-// 		value: undefined,
-// 		key: undefined,
-// 		index: undefined,
-// 		finalized: false,
-// 	}
-//
-// 	valueContent := LHS.trim().replace(stripParensRE, "").trim()
-// 	trimmedOffset := LHS.indexOf(valueContent)
-//
-// 	iteratorMatch := valueContent.match(forIteratorRE)
-// 	if iteratorMatch {
-// 		valueContent = valueContent.replace(forIteratorRE, "").trim()
-//
-// 		keyContent := iteratorMatch[1].trim()
-// 		let keyOffset: number | undefined
-// 		if keyContent {
-// 			keyOffset = exp.indexOf(keyContent, trimmedOffset + len(valueContent))
-// 			result.key = createAliasExpression(keyContent, keyOffset, true)
-// 		}
-//
-// 		if iteratorMatch[2] {
-// 			indexContent := iteratorMatch[2].trim()
-//
-// 			if indexContent {
-// 				result.index = createAliasExpression(
-// 					indexContent,
-// 					exp.indexOf(
-// 						indexContent,
-// 						result.key
-// 							? keyOffset! + len(keyContent)
-// 							: trimmedOffset + len(valueContent),
-// 					),
-// 					true,
-// 				)
-// 			}
-// 		}
-// 	}
-//
-// 	if valueContent {
-// 		result.value = createAliasExpression(valueContent, trimmedOffset, true)
-// 	}
-//
-// 	return result
-// }
+func parseForExpression(exp string, loc core.TextRange) *vue_ast.ForParseResult {
+	inMatch := forAliasRE.FindStringSubmatchIndex(exp)
+	if len(inMatch) < 6 {
+		return nil
+	}
+
+	lhsStart := inMatch[2]
+	lhsEnd := inMatch[3]
+	rhsStart := inMatch[4]
+	rhsEnd := inMatch[5]
+
+	locStart := loc.Pos()
+	lhs := exp[lhsStart:lhsEnd]
+	rhs := exp[rhsStart:rhsEnd]
+
+	result := &vue_ast.ForParseResult{
+		Source: vue_ast.NewSimpleExpressionNode(ParseTsAst("("+rhs+")"), core.NewTextRange(loc.Pos() + rhsStart, loc.Pos() + rhsEnd), 1, 1),
+		Value:  nil,
+		Key:    nil,
+		Index:  nil,
+	}
+
+	valueContent := lhs
+	valueOffset := lhsStart
+	if len(valueContent) > 0 && valueContent[0] == '(' && valueContent[len(valueContent)-1] == ')' {
+		valueOffset++
+		valueContent = valueContent[1:]
+		valueContent = valueContent[:len(valueContent)-1]
+	}
+
+	iteratorMatch := forIteratorRE.FindStringSubmatchIndex(valueContent)
+	if len(iteratorMatch) > 0 {
+		if len(iteratorMatch) >= 4 && iteratorMatch[2] != -1 {
+			keyContent := valueContent[iteratorMatch[2]:iteratorMatch[3]]
+			trimmedKeyContent, _, _ := utils.TrimWhiteSpaceOrLineTerminator(keyContent)
+			if trimmedKeyContent != "" {
+				keyStart := locStart + valueOffset + iteratorMatch[2]
+				keyEnd := keyStart + len(keyContent)
+				keyParseContent := "(" + keyContent + ")=>{}"
+				result.Key = vue_ast.NewSimpleExpressionNode(
+					ParseTsAst(keyParseContent),
+					core.NewTextRange(keyStart, keyEnd),
+					1,
+					5,
+				)
+			}
+		}
+
+		if len(iteratorMatch) >= 6 && iteratorMatch[4] != -1 {
+			indexContent := valueContent[iteratorMatch[4]:iteratorMatch[5]]
+			trimmedIndexContent, _, _ := utils.TrimWhiteSpaceOrLineTerminator(indexContent)
+			if trimmedIndexContent != "" {
+				indexStart := locStart + valueOffset + iteratorMatch[4]
+				indexEnd := indexStart + len(indexContent)
+				indexParseContent := "(" + indexContent + ")=>{}"
+				result.Index = vue_ast.NewSimpleExpressionNode(
+					ParseTsAst(indexParseContent),
+					core.NewTextRange(indexStart, indexEnd),
+					1,
+					5,
+				)
+			}
+		}
+
+		valueContent = valueContent[:iteratorMatch[0]]
+	}
+
+	if strings.TrimSpace(valueContent) != "" {
+		valueStart := locStart + valueOffset
+		valueEnd := valueStart + len(valueContent)
+		valueParseContent := "(" + valueContent + ")=>{}"
+		result.Value = vue_ast.NewSimpleExpressionNode(
+			ParseTsAst(valueParseContent),
+			core.NewTextRange(valueStart, valueEnd),
+			1,
+			5,
+		)
+	}
+
+	return result
+}
 
 func (p *Parser) onText(content string, start, end int) {
 	children := p.currentRoot.Children
@@ -630,7 +654,7 @@ func (p *Parser) onCloseTag(el *vue_ast.ElementNode, end int, isImplied bool) {
 					panic("assertion failed: <script> has more than 1 child")
 				}
 				content := p.sourceText[el.Children[0].Loc.Pos():el.Children[0].Loc.End()]
-				el.Ast = parseTsAst(content)
+				el.Ast = ParseTsAst(content)
 			}
 		}
 	}
@@ -682,8 +706,6 @@ func (p *Parser) onCloseTag(el *vue_ast.ElementNode, end int, isImplied bool) {
 	// 	tokenizer.inXML = false
 	// }
 }
-
-
 
 func (p *Parser) lookAhead(index int, c rune) int {
 	for off, r := range p.sourceText[index:] {
@@ -1181,7 +1203,7 @@ var (
 	}
 )
 
-func parseTsAst(source string) *ast.SourceFile {
+func ParseTsAst(source string) *ast.SourceFile {
 	file := parser.ParseSourceFile(ast.SourceFileParseOptions{
 		FileName: "/virtual.tsx",
 		Path:     tspath.Path("/virtual.tsx"),

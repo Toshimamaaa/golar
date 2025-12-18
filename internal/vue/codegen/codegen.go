@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/auvred/golar/internal/mapping"
+	"github.com/auvred/golar/internal/utils"
 	"github.com/auvred/golar/internal/vue/ast"
 	"github.com/auvred/golar/internal/vue/diagnostics"
 	"github.com/microsoft/typescript-go/shim/ast"
@@ -11,8 +12,28 @@ import (
 	"github.com/microsoft/typescript-go/shim/diagnostics"
 )
 
+const GlobalTypesPath = utils.GolarVirtualScheme + "vue-global-types.d.ts"
+const globalTypesReference = `/// <reference types="` + GlobalTypesPath + `" />\n`
+
+const GlobalTypes = `
+export {}
+
+declare global {
+	function __VLS_vFor<T>(source: T): T extends number
+		? [number, number]
+		: T extends string
+			? [string, number]
+			: T extends any[]
+				? [T[number], number]
+				: T extends Iterable<infer V>
+					? [V, number]
+					: [T[keyof T], ` + "`${keyof T}`" + `, number]
+}
+`
+
 func Codegen(sourceText string, root *vue_ast.RootNode) (string, []mapping.Mapping, []*ast.Diagnostic) {
 	ctx := newCodegenCtx(root, sourceText)
+	ctx.serviceText.WriteString(globalTypesReference)
 
 	var scriptEl *vue_ast.ElementNode
 	var scriptSetupEl *vue_ast.ElementNode

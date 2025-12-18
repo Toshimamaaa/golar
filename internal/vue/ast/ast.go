@@ -102,14 +102,22 @@ type SimpleExpressionNode struct {
 	Ast *ast.SourceFile
 	// TODO: modify TS parser to parse expressions instead?
 	PrefixLen int
+	SuffixLen int
 	// TODO
 	// isHandlerKey?: boolean
 }
 
-func NewSimpleExpressionNode(ast *ast.SourceFile, loc core.TextRange, prefixLen int) *SimpleExpressionNode {
-	data := SimpleExpressionNode{Node: Node{Kind: KindSimple_expression, Loc: loc}, Ast: ast, PrefixLen: prefixLen}
+func NewSimpleExpressionNode(ast *ast.SourceFile, loc core.TextRange, prefixLen, suffixLen int) *SimpleExpressionNode {
+	data := SimpleExpressionNode{Node: Node{Kind: KindSimple_expression, Loc: loc}, Ast: ast, PrefixLen: prefixLen, SuffixLen: suffixLen}
 	data.Node.data = &data
 	return &data
+}
+
+type ForParseResult struct {
+	Source    *SimpleExpressionNode
+	Value     *SimpleExpressionNode
+	Key       *SimpleExpressionNode
+	Index     *SimpleExpressionNode
 }
 
 type CommentNode struct {
@@ -136,6 +144,9 @@ func NewAttributeNode(name string, nameLoc, loc core.TextRange) *AttributeNode {
 	return &data
 }
 
+type VForDirective struct {
+}
+
 type DirectiveNode struct {
 	Node
 	// The normalized name without prefix or shorthands, e.g. "bind", "on"
@@ -146,6 +157,7 @@ type DirectiveNode struct {
 	NameLoc core.TextRange
 	// Nil when directive doesn't have expression
 	Expression *SimpleExpressionNode
+	ForParseResult *ForParseResult
 	// arg ExpressionNode | undefined
 	// modifiers: SimpleExpressionNode[]
 }

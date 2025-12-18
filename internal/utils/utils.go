@@ -21,13 +21,15 @@ func IsWhiteSpaceOrLineTerminator(r rune) bool {
 	return unicode.Is(unicode.Zs, r)
 }
 
-func TrimWhiteSpaceOrLineTerminator(str string) string {
+func TrimWhiteSpaceOrLineTerminator(str string) (string, int, int) {
+	var trimmedLeft, trimmedRight int
 	for len(str) > 0 {
 		r, n := utf8.DecodeRuneInString(str)
 		if !IsWhiteSpaceOrLineTerminator(r) {
 			break
 		}
 		str = str[n:]
+		trimmedLeft += n
 	}
 
 	for len(str) > 0 {
@@ -36,7 +38,8 @@ func TrimWhiteSpaceOrLineTerminator(str string) string {
 			break
 		}
 		str = str[:len(str)-n]
+		trimmedRight += n
 	}
 
-	return str
+	return str, trimmedLeft, trimmedRight
 }

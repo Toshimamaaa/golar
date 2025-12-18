@@ -210,8 +210,8 @@ func (m *Mapper) findOverlappingRanges(start int, end int, fromRange rangeKey) [
 
 	startLow, startHigh, _, _ := binarySearch(memo.offsets, start)
 	endLow, endHigh, _, _ := binarySearch(memo.offsets, end)
-	startIndex := minInt(startLow, startHigh)
-	endIndex := maxInt(endLow, endHigh)
+	startIndex := min(startLow, startHigh)
+	endIndex := max(endLow, endHigh)
 	toRange := otherRange(fromRange)
 	seen := make(map[int]struct{})
 	var results []MappedRange
@@ -230,14 +230,8 @@ func (m *Mapper) findOverlappingRanges(start int, end int, fromRange rangeKey) [
 				continue
 			}
 
-			overlapStart := start
-			if overlapStart < fromStart {
-				overlapStart = fromStart
-			}
-			overlapEnd := end
-			if overlapEnd > fromEnd {
-				overlapEnd = fromEnd
-			}
+			overlapStart := max(start, fromStart)
+			overlapEnd := min(end, fromEnd)
 
 			toOffset := offsetForRange(mapping, toRange)
 			mappedStart, okStart := translateOffset(overlapStart, fromStart, toOffset, mapping.Length, mapping.Length)
@@ -296,14 +290,8 @@ func binarySearch(values []int, searchValue int) (low int, high int, match int, 
 		}
 	}
 
-	finalLow := minInt(low, high, len(values)-1)
-	if finalLow < 0 {
-		finalLow = 0
-	}
-	finalHigh := maxInt(low, high, 0)
-	if finalHigh > len(values)-1 {
-		finalHigh = len(values) - 1
-	}
+	finalLow := max(min(min(low, high), len(values)-1), 0)
+	finalHigh := min(max(max(low, high), 0), len(values) - 1)
 
 	return finalLow, finalHigh, match, hasMatch
 }
@@ -324,30 +312,7 @@ func translateOffset(
 		toLength = toLengthOptional[0]
 	}
 
-	rangeOffset := start - fromOffset
-	if rangeOffset > toLength {
-		rangeOffset = toLength
-	}
+	rangeOffset := min(start - fromOffset, toLength)
 
 	return toOffset + rangeOffset, true
-}
-
-func minInt(values ...int) int {
-	min := values[0]
-	for _, value := range values[1:] {
-		if value < min {
-			min = value
-		}
-	}
-	return min
-}
-
-func maxInt(values ...int) int {
-	max := values[0]
-	for _, value := range values[1:] {
-		if value > max {
-			max = value
-		}
-	}
-	return max
 }

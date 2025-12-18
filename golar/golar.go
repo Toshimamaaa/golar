@@ -5,3 +5,5 @@ import (
 )
 
 var GolarExtCallbacks = golarinternal.GolarExtCallbacks
+
+var WrapFS = golarinternal.WrapFS

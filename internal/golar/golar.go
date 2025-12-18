@@ -2,8 +2,10 @@ package golar
 
 import (
 	"strings"
+	"sync"
 
 	"github.com/auvred/golar/internal/mapping"
+	"github.com/auvred/golar/internal/utils"
 	"github.com/auvred/golar/internal/vue/codegen"
 	"github.com/auvred/golar/internal/vue/parser"
 
@@ -13,6 +15,7 @@ import (
 	"github.com/microsoft/typescript-go/shim/diagnosticwriter"
 	"github.com/microsoft/typescript-go/shim/golarext"
 	"github.com/microsoft/typescript-go/shim/parser"
+	"github.com/microsoft/typescript-go/shim/vfs"
 )
 
 type compilerHostProxy struct {
@@ -109,10 +112,28 @@ func (d *diagnosticProxy) MessageChain() []diagnosticwriter.Diagnostic {
 
 type fileProxy struct {
 	*ast.SourceFile
+	ecmaLineMapMu sync.RWMutex
+	ecmaLineMap   []core.TextPos
 }
 
 func (f *fileProxy) Text() string {
 	return f.SourceFile.GolarLanguageData.(languageData).sourceText
+}
+
+func (f *fileProxy) ECMALineMap() []core.TextPos {
+	f.ecmaLineMapMu.RLock()
+	lineMap := f.ecmaLineMap
+	f.ecmaLineMapMu.RUnlock()
+	if lineMap == nil {
+		f.ecmaLineMapMu.Lock()
+		defer f.ecmaLineMapMu.Unlock()
+		lineMap = f.ecmaLineMap
+		if lineMap == nil {
+			lineMap = core.ComputeECMALineStarts(f.Text())
+			f.ecmaLineMap = lineMap
+		}
+	}
+	return lineMap
 }
 
 func (d *diagnosticProxy) File() diagnosticwriter.FileLike {
@@ -120,7 +141,7 @@ func (d *diagnosticProxy) File() diagnosticwriter.FileLike {
 		if file.GolarLanguageData == nil {
 			return file
 		}
-		return &fileProxy{file}
+		return &fileProxy{SourceFile: file}
 	}
 	return nil
 }
@@ -180,6 +201,8 @@ func adjustDiagnostic(file *ast.SourceFile, diagnostic *ast.Diagnostic) *ast.Dia
 	return diagnostic
 }
 
+// TODO: for hover and other LS methods we should analyze multiple mappings
+// instead of returning the first mapping
 func positionToService(file *ast.SourceFile, pos int) int {
 	if file.GolarLanguageData == nil {
 		return pos
@@ -198,4 +221,10 @@ var GolarExtCallbacks = &golarext.GolarCallbacks{
 	WrapCompilerHost:  wrapCompilerHost,
 	WrapASTDiagnostic: wrapASTDiagnostic,
 	ParseSourceFile:   parseFile,
+}
+
+func WrapFS(fs vfs.FS) vfs.FS {
+	return utils.NewOverlayVFS(fs, map[string]string{
+		vue_codegen.GlobalTypesPath: vue_codegen.GlobalTypes,
+	})
 }

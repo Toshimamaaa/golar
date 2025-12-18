@@ -1,7 +1,7 @@
 package vue_codegen
 
 import (
-	vue_ast "github.com/auvred/golar/internal/vue/ast"
+	"github.com/auvred/golar/internal/vue/ast"
 	"github.com/microsoft/typescript-go/shim/ast"
 	"github.com/microsoft/typescript-go/shim/core"
 )

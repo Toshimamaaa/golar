@@ -5,6 +5,7 @@ import (
 	"github.com/auvred/golar/internal/vue/ast"
 	"github.com/auvred/golar/internal/vue/diagnostics"
 	"github.com/microsoft/typescript-go/shim/ast"
+	"slices"
 )
 
 type templateCodegenCtx struct {
@@ -212,6 +213,13 @@ func (m *expressionMapper) mapTextToNodePos(pos int) {
 	m.lastMappedPos = pos
 }
 
+func (m *expressionMapper) shouldPrefixIdentifier(identifier *ast.Node) bool {
+	if m.typeOnly {
+		return false
+	}
+	return m.templateCodegenCtx.shouldPrefixIdentifier(identifier)
+}
+
 func (c *templateCodegenCtx) mapExpressionInNonBindingPosition(expr *vue_ast.SimpleExpressionNode) {
 	m := newExpressionMapper(c, expr)
 	if len(expr.Ast.Statements.Nodes) > 0 {
@@ -251,13 +259,9 @@ func (m *expressionMapper) mapInBindingPosition(node *ast.BindingName) bool {
 	case ast.KindArrayBindingPattern, ast.KindObjectBindingPattern:
 		for _, elem := range node.AsBindingPattern().Elements.Nodes {
 			bindingElem := elem.AsBindingElement()
-			if bindingElem.PropertyName != nil && m.mapInNonBindingPosition(bindingElem.PropertyName) {
-				return true
-			}
-			if bindingElem.Name() != nil && m.mapInBindingPosition(bindingElem.Name()) {
-				return true
-			}
-			if bindingElem.Initializer != nil && m.mapInNonBindingPosition(bindingElem.Initializer) {
+			if visit(m.mapInNonBindingPositionIfNotIdentifier, bindingElem.PropertyName) ||
+				visit(m.mapInBindingPosition, bindingElem.Name()) ||
+				visit(m.mapInNonBindingPosition, bindingElem.Initializer) {
 				return true
 			}
 		}
@@ -271,20 +275,50 @@ func visit(v ast.Visitor, node *ast.Node) bool {
 	}
 	return false
 }
+func visitNodeList(v ast.Visitor, nodeList *ast.NodeList) bool {
+	if nodeList == nil {
+		return false
+	}
+	return slices.ContainsFunc(nodeList.Nodes, v)
+}
 
-func (m *expressionMapper) typeOnlyVisit(v ast.Visitor, node *ast.Node) bool {
+func (m *expressionMapper) withTypeOnlyVisit(fn func() bool) bool {
 	before := m.typeOnly
 	m.typeOnly = true
-	res := visit(v, node)
+	res := fn()
 	m.typeOnly = before
 	return res
+}
+func (m *expressionMapper) typeOnlyVisit(node *ast.Node) bool {
+	return m.withTypeOnlyVisit(func() bool {
+		return visit(m.mapInNonBindingPosition, node)
+	})
+}
+func (m *expressionMapper) valueOnlyVisit(node *ast.Node) bool {
+	before := m.typeOnly
+	m.typeOnly = false
+	res := visit(m.mapInNonBindingPosition, node)
+	m.typeOnly = before
+	return res
+}
+func (m *expressionMapper) typeOnlyNodeListVisit(nodeList *ast.NodeList) bool {
+	if nodeList == nil {
+		return false
+	}
+	return m.withTypeOnlyVisit(func() bool {
+		for _, n := range nodeList.Nodes {
+			if visit(m.mapInNonBindingPosition, n) {
+				return true
+			}
+		}
+		return false
+	})
 }
 
 func (m *expressionMapper) mapInNonBindingPositionIfNotIdentifier(node *ast.Node) bool {
 	return !ast.IsIdentifier(node) && m.mapInNonBindingPosition(node)
 }
 
-// TODO: more robust support for types, etc.
 func (m *expressionMapper) mapInNonBindingPosition(node *ast.Node) bool {
 	switch node.Kind {
 	case ast.KindIdentifier:
@@ -306,26 +340,78 @@ func (m *expressionMapper) mapInNonBindingPosition(node *ast.Node) bool {
 	case ast.KindPropertyAccessExpression:
 		n := node.AsPropertyAccessExpression()
 		return visit(m.mapInNonBindingPosition, n.Expression) || visit(m.mapInNonBindingPositionIfNotIdentifier, n.Name())
+	case ast.KindQualifiedName:
+		n := node.AsQualifiedName()
+		return visit(m.mapInNonBindingPosition, n.Left) || visit(m.mapInNonBindingPositionIfNotIdentifier, n.Right)
 	case ast.KindEnumMember:
 		n := node.AsEnumMember()
 		return visit(m.mapInNonBindingPositionIfNotIdentifier, n.Name()) || visit(m.mapInNonBindingPosition, n.Initializer)
-	case ast.KindPropertySignature:
-		n := node.AsPropertySignatureDeclaration()
-		return visit(m.mapInNonBindingPositionIfNotIdentifier, n.Name()) || visit(m.mapInNonBindingPosition, n.Initializer)
+	case ast.KindPropertyDeclaration:
+		n := node.AsPropertyDeclaration()
+		return visit(m.mapInNonBindingPositionIfNotIdentifier, n.Name()) || m.typeOnlyVisit(n.Type) || visit(m.mapInNonBindingPosition, n.Initializer)
 	case ast.KindPropertyAssignment:
 		n := node.AsPropertyAssignment()
 		return visit(m.mapInNonBindingPositionIfNotIdentifier, n.Name()) || visit(m.mapInNonBindingPosition, n.Initializer)
-	// TODO: maybe we can track locals in codegen scope instead of relying on binder?
-	// TODO: class decl, function decl, enum, etc.
+	case ast.KindGetAccessor:
+		n := node.AsGetAccessorDeclaration()
+		return visit(m.mapInNonBindingPositionIfNotIdentifier, n.Name()) || m.typeOnlyNodeListVisit(n.TypeParameters) || visitNodeList(m.mapInNonBindingPosition, n.Parameters) || m.typeOnlyVisit(n.Type) || m.typeOnlyVisit(n.FullSignature) || visit(m.mapInNonBindingPosition, n.Body)
+	case ast.KindSetAccessor:
+		n := node.AsSetAccessorDeclaration()
+		return visit(m.mapInNonBindingPositionIfNotIdentifier, n.Name()) || m.typeOnlyNodeListVisit(n.TypeParameters) || visitNodeList(m.mapInNonBindingPosition, n.Parameters) || m.typeOnlyVisit(n.Type) || m.typeOnlyVisit(n.FullSignature) || visit(m.mapInNonBindingPosition, n.Body)
 	case ast.KindVariableDeclaration:
 		decl := node.AsVariableDeclaration()
-		return visit(m.mapInBindingPosition, decl.Name()) || visit(m.mapInBindingPosition, decl.Type) || visit(m.mapInNonBindingPosition, decl.Initializer)
-	case ast.KindBreakStatement, ast.KindContinueStatement, ast.KindLabeledStatement:
+		return visit(m.mapInBindingPosition, decl.Name()) || m.typeOnlyVisit(decl.Type) || visit(m.mapInNonBindingPosition, decl.Initializer)
+	case ast.KindBreakStatement,
+		ast.KindContinueStatement,
+		ast.KindLabeledStatement,
+		ast.KindModuleDeclaration:
 		return false
+	case ast.KindFunctionDeclaration:
+		n := node.AsFunctionDeclaration()
+		return m.typeOnlyNodeListVisit(n.TypeParameters) || visitNodeList(m.mapInNonBindingPosition, n.Parameters) || m.typeOnlyVisit(n.Type) || m.typeOnlyVisit(n.FullSignature) || visit(m.mapInNonBindingPosition, n.Body)
+	case ast.KindArrowFunction:
+		n := node.AsArrowFunction()
+		return m.typeOnlyNodeListVisit(n.TypeParameters) || visitNodeList(m.mapInNonBindingPosition, n.Parameters) || m.typeOnlyVisit(n.Type) || m.typeOnlyVisit(n.FullSignature) || visit(m.mapInNonBindingPosition, n.Body)
+	case ast.KindFunctionExpression:
+		n := node.AsFunctionExpression()
+		return m.typeOnlyNodeListVisit(n.TypeParameters) || visitNodeList(m.mapInNonBindingPosition, n.Parameters) || m.typeOnlyVisit(n.Type) || m.typeOnlyVisit(n.FullSignature) || visit(m.mapInNonBindingPosition, n.Body)
+	case ast.KindClassDeclaration:
+		n := node.ClassLikeData()
+		return m.typeOnlyNodeListVisit(n.TypeParameters) || visitNodeList(m.mapInNonBindingPosition, n.HeritageClauses) || visitNodeList(m.mapInNonBindingPosition, n.Members)
+	case ast.KindConstructor:
+		n := node.AsConstructorDeclaration()
+		return m.typeOnlyNodeListVisit(n.TypeParameters) || visitNodeList(m.mapInNonBindingPosition, n.Parameters) || m.typeOnlyVisit(n.Type) || m.typeOnlyVisit(n.FullSignature) || visit(m.mapInNonBindingPosition, n.Body)
+	case ast.KindMethodDeclaration:
+		n := node.AsMethodDeclaration()
+		return visit(m.mapInNonBindingPositionIfNotIdentifier, n.Name()) || m.typeOnlyNodeListVisit(n.TypeParameters) || visitNodeList(m.mapInNonBindingPosition, n.Parameters) || m.typeOnlyVisit(n.Type) || m.typeOnlyVisit(n.FullSignature) || visit(m.mapInNonBindingPosition, n.Body)
+	case ast.KindHeritageClause:
+		n := node.AsHeritageClause()
+		if n.Token == ast.KindImplementsKeyword {
+			return m.withTypeOnlyVisit(func() bool {
+				return node.ForEachChild(m.mapInNonBindingPosition)
+			})
+		}
+	case ast.KindExpressionWithTypeArguments:
+		n := node.AsExpressionWithTypeArguments()
+		return visit(m.mapInNonBindingPosition, n.Expression) || m.typeOnlyNodeListVisit(n.TypeArguments)
+	case ast.KindParameter:
+		n := node.AsParameterDeclaration()
+		return visit(m.mapInNonBindingPosition, n.Name()) || m.typeOnlyVisit(n.Type) || visit(m.mapInNonBindingPosition, n.Initializer)
+	case ast.KindAsExpression:
+		n := node.AsAsExpression()
+		return visit(m.mapInNonBindingPosition, n.Expression) || m.typeOnlyVisit(n.Type)
+	case ast.KindCallExpression:
+		n := node.AsCallExpression()
+		return visit(m.mapInNonBindingPosition, n.Expression) || m.typeOnlyNodeListVisit(n.TypeArguments) || visitNodeList(m.mapInNonBindingPosition, n.Arguments)
+	case ast.KindTypeQuery:
+		n := node.AsTypeQueryNode()
+		return m.valueOnlyVisit(n.ExprName) || m.typeOnlyNodeListVisit(n.TypeArguments)
+	case ast.KindTypeAliasDeclaration, ast.KindInterfaceDeclaration:
+		return m.withTypeOnlyVisit(func() bool {
+			return node.ForEachChild(m.mapInNonBindingPosition)
+		})
 	}
-	if ast.IsTypeNode(node) {
-		return false
-	}
+	// TODO: JSX
 
 	return node.ForEachChild(m.mapInNonBindingPosition)
 }

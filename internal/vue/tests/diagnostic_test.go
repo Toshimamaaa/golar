@@ -1,4 +1,4 @@
-package tests
+package vue_tests
 
 import (
 	"testing"

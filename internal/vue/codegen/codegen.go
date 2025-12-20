@@ -15,7 +15,8 @@ import (
 const GlobalTypesPath = utils.GolarVirtualScheme + "vue-global-types.d.ts"
 const globalTypesReference = `/// <reference types="` + GlobalTypesPath + `" />\n`
 
-const GlobalTypes = `
+// Iterable requires es2015.iterable
+const GlobalTypes = `/// <reference lib="es2015" />
 export {}
 
 declare global {

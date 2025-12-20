@@ -111,7 +111,7 @@ func (p *Parser) oninterpolation(start int, end int) {
 	// 	}
 	// }
 
-	exp := vue_ast.NewSimpleExpressionNode(ParseTsAst(expContent), core.NewTextRange(innerStart, innerEnd), 0, 0)
+	exp := vue_ast.NewSimpleExpressionNode(ParseTsAst("("+expContent+")"), core.NewTextRange(innerStart, innerEnd), 1, 1)
 
 	p.addNode(vue_ast.NewInterpolationNode(
 		exp,

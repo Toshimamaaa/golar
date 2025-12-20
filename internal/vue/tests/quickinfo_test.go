@@ -1,4 +1,4 @@
-package tests
+package vue_tests
 
 import (
 	"testing"
@@ -13,7 +13,7 @@ func TestQuickInfo(t *testing.T) {
 	defer testutil.RecoverAndFail(t, "Panic on fourslash test")
 	content := withVueNodeModules(t, `// @filename: file.vue
 <script lang="ts" setup>
-	const /*1*/foo = 'hello'
+	const foo/*1*/ = 'hello'
 </script>`)
 	f, done := fourslash.NewFourslash(t, nil, content)
 	defer done()

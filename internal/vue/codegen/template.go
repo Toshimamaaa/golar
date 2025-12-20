@@ -101,6 +101,7 @@ func (c *templateCodegenCtx) visit(el *vue_ast.ElementNode) {
 						c.reportDiagnostic(dir.NameLoc, vue_diagnostics.Multiple_conditional_directives_cannot_coexist_on_the_same_element)
 						break
 					}
+					hasSeenConditionalDirective = true
 					condChain = conditionalChainValid
 					conditionalDirective = dir
 				case "else-if":
@@ -144,7 +145,7 @@ func (c *templateCodegenCtx) visit(el *vue_ast.ElementNode) {
 						c.mapExpressionInNonBindingPosition(conditionalDirective.Expression)
 					} else {
 						c.reportDiagnostic(conditionalDirective.Loc, vue_diagnostics.X_0_is_missing_expression, conditionalDirective.RawName)
-						c.serviceText.WriteString("true")
+						c.serviceText.WriteString("1 as number")
 					}
 					c.serviceText.WriteString(") {\n")
 				case "else":

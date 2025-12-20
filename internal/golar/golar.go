@@ -1,6 +1,8 @@
 package golar
 
 import (
+	"fmt"
+	"os"
 	"strings"
 	"sync"
 
@@ -227,4 +229,27 @@ func WrapFS(fs vfs.FS) vfs.FS {
 	return utils.NewOverlayVFS(fs, map[string]string{
 		vue_codegen.GlobalTypesPath: vue_codegen.GlobalTypes,
 	})
+}
+
+func WrapFourslashFS(globalOptions map[string]string, fs vfs.FS) vfs.FS {
+	overlay := map[string]string{
+		vue_codegen.GlobalTypesPath: vue_codegen.GlobalTypes,
+	}
+	if extraFiles := globalOptions["golarextrafiles"]; extraFiles != "" {
+		pairs := strings.Split(extraFiles, "\x1f")
+		for _, pair := range pairs {
+			if pair == "" {
+				continue
+			}
+			parsedPair := strings.Split(pair, "\x1e")
+			realPath := parsedPair[0]
+			virtualPath := parsedPair[1]
+			bytes, err := os.ReadFile(realPath)
+			if err != nil {
+				panic(fmt.Sprintf("error reading %v: %v", realPath, err))
+			}
+			overlay[virtualPath] = string(bytes)
+		}
+	}
+	return utils.NewOverlayVFS(fs, overlay)
 }

@@ -13,9 +13,9 @@ import (
 )
 
 func TestExpressionMapper(t *testing.T) {
-	t.Run("non-binding position", func (t *testing.T) {
-		cases := []struct{
-			sourceText string
+	t.Run("non-binding position", func(t *testing.T) {
+		cases := []struct {
+			sourceText  string
 			serviceText string
 		}{
 			{
@@ -109,7 +109,7 @@ func TestExpressionMapper(t *testing.T) {
 		}
 
 		for i, c := range cases {
-			t.Run(strconv.Itoa(i), func (t *testing.T) {
+			t.Run(strconv.Itoa(i), func(t *testing.T) {
 				base := newCodegenCtx(nil, c.sourceText)
 				ctx := newTemplateCodegenCtx(&base)
 
@@ -125,16 +125,16 @@ func TestExpressionMapper(t *testing.T) {
 		}
 	})
 
-	t.Run("binding position", func (t *testing.T) {
-		cases := []struct{
-			sourceText string
+	t.Run("binding position", func(t *testing.T) {
+		cases := []struct {
+			sourceText  string
 			serviceText string
 		}{
 			{"hello", "hello"},
 		}
 
 		for i, c := range cases {
-			t.Run(strconv.Itoa(i), func (t *testing.T) {
+			t.Run(strconv.Itoa(i), func(t *testing.T) {
 				base := newCodegenCtx(nil, c.sourceText)
 				ctx := newTemplateCodegenCtx(&base)
 

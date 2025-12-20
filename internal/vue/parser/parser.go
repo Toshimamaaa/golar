@@ -548,7 +548,7 @@ func parseForExpression(exp string, loc core.TextRange) *vue_ast.ForParseResult 
 	rhs := exp[rhsStart:rhsEnd]
 
 	result := &vue_ast.ForParseResult{
-		Source: vue_ast.NewSimpleExpressionNode(ParseTsAst("("+rhs+")"), core.NewTextRange(loc.Pos() + rhsStart, loc.Pos() + rhsEnd), 1, 1),
+		Source: vue_ast.NewSimpleExpressionNode(ParseTsAst("("+rhs+")"), core.NewTextRange(loc.Pos()+rhsStart, loc.Pos()+rhsEnd), 1, 1),
 		Value:  nil,
 		Key:    nil,
 		Index:  nil,

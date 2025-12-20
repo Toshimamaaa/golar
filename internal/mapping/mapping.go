@@ -291,7 +291,7 @@ func binarySearch(values []int, searchValue int) (low int, high int, match int, 
 	}
 
 	finalLow := max(min(min(low, high), len(values)-1), 0)
-	finalHigh := min(max(max(low, high), 0), len(values) - 1)
+	finalHigh := min(max(max(low, high), 0), len(values)-1)
 
 	return finalLow, finalHigh, match, hasMatch
 }
@@ -312,7 +312,7 @@ func translateOffset(
 		toLength = toLengthOptional[0]
 	}
 
-	rangeOffset := min(start - fromOffset, toLength)
+	rangeOffset := min(start-fromOffset, toLength)
 
 	return toOffset + rangeOffset, true
 }

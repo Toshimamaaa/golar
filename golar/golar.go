@@ -7,3 +7,5 @@ import (
 var GolarExtCallbacks = golarinternal.GolarExtCallbacks
 
 var WrapFS = golarinternal.WrapFS
+
+var WrapFourslashFS = golarinternal.WrapFourslashFS

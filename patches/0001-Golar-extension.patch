@@ -1,17 +1,19 @@
-From a59bd0894efae70f24c4fb8dae773225341b1a4a Mon Sep 17 00:00:00 2001
+From 3a4e91b5c579475d8ea8b3234b076bcfb2a2623b Mon Sep 17 00:00:00 2001
 From: auvred <aauvred@gmail.com>
 Date: Mon, 15 Dec 2025 12:37:25 +0300
 Subject: [PATCH] Golar extension
 
 ---
- cmd/tsgo/lsp.go                     |  9 +++++++++
- cmd/tsgo/sys.go                     |  6 ++++++
+ cmd/tsgo/lsp.go                     | 11 ++++++++++-
+ cmd/tsgo/sys.go                     |  8 +++++++-
  internal/ast/ast.go                 |  2 ++
  internal/core/core.go               |  2 +-
  internal/execute/tsc.go             |  1 +
  internal/execute/tsc/compile.go     |  3 +++
  internal/execute/tsc/diagnostics.go |  5 +++--
- internal/golarext/golarext.go       | 17 +++++++++++++++++
+ internal/execute/tsctests/sys.go    |  6 ++++++
+ internal/fourslash/fourslash.go     | 11 ++++++++++-
+ internal/golarext/golarext.go       | 16 ++++++++++++++++
  internal/ls/diagnostics.go          |  6 ++++++
  internal/ls/host.go                 |  4 ++++
  internal/ls/hover.go                |  2 +-
@@ -23,11 +25,11 @@ Subject: [PATCH] Golar extension
  internal/project/session.go         |  4 ++++
  internal/project/snapshot.go        |  6 ++++++
  internal/tspath/extension.go        |  6 +++---
- 19 files changed, 91 insertions(+), 10 deletions(-)
+ 21 files changed, 108 insertions(+), 13 deletions(-)
  create mode 100644 internal/golarext/golarext.go
 
 diff --git a/cmd/tsgo/lsp.go b/cmd/tsgo/lsp.go
-index 0dd04c57f..6ea054e4a 100644
+index 0dd04c57f..c27d97e00 100644
 --- a/cmd/tsgo/lsp.go
 +++ b/cmd/tsgo/lsp.go
 @@ -10,10 +10,12 @@ import (
@@ -43,7 +45,13 @@ index 0dd04c57f..6ea054e4a 100644
  	"github.com/microsoft/typescript-go/internal/tspath"
  	"github.com/microsoft/typescript-go/internal/vfs/osvfs"
  )
-@@ -46,6 +48,8 @@ func runLSP(args []string) int {
+@@ -41,11 +43,13 @@ func runLSP(args []string) int {
+ 		defer profileSession.Stop()
+ 	}
+ 
+-	fs := bundled.WrapFS(osvfs.FS())
++	fs := golar.WrapFS(bundled.WrapFS(osvfs.FS()))
+ 	defaultLibraryPath := bundled.LibPath()
  	typingsLocation := getGlobalTypingsCacheLocation()
  
  	s := lsp.NewServer(&lsp.ServerOptions{
@@ -65,7 +73,7 @@ index 0dd04c57f..6ea054e4a 100644
  
  	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 diff --git a/cmd/tsgo/sys.go b/cmd/tsgo/sys.go
-index e5b2b8d56..fd4bafee6 100644
+index e5b2b8d56..0ea723425 100644
 --- a/cmd/tsgo/sys.go
 +++ b/cmd/tsgo/sys.go
 @@ -6,8 +6,10 @@ import (
@@ -90,6 +98,15 @@ index e5b2b8d56..fd4bafee6 100644
  func newSystem() *osSys {
  	cwd, err := os.Getwd()
  	if err != nil {
+@@ -68,7 +74,7 @@ func newSystem() *osSys {
+ 
+ 	return &osSys{
+ 		cwd:                tspath.NormalizePath(cwd),
+-		fs:                 bundled.WrapFS(osvfs.FS()),
++		fs:                 golar.WrapFS(bundled.WrapFS(osvfs.FS())),
+ 		defaultLibraryPath: bundled.LibPath(),
+ 		writer:             os.Stdout,
+ 		start:              time.Now(),
 diff --git a/internal/ast/ast.go b/internal/ast/ast.go
 index d1d6d62a0..a39a9981b 100644
 --- a/internal/ast/ast.go
@@ -170,12 +187,94 @@ index 5a3d752a0..0023b6f24 100644
  	}
  }
  
+diff --git a/internal/execute/tsctests/sys.go b/internal/execute/tsctests/sys.go
+index f0fceb4f5..d4a8934f9 100644
+--- a/internal/execute/tsctests/sys.go
++++ b/internal/execute/tsctests/sys.go
+@@ -9,6 +9,7 @@ import (
+ 	"sync"
+ 	"time"
+ 
++	"github.com/auvred/golar/golar"
+ 	"github.com/microsoft/typescript-go/internal/collections"
+ 	"github.com/microsoft/typescript-go/internal/compiler"
+ 	"github.com/microsoft/typescript-go/internal/core"
+@@ -16,6 +17,7 @@ import (
+ 	"github.com/microsoft/typescript-go/internal/execute"
+ 	"github.com/microsoft/typescript-go/internal/execute/incremental"
+ 	"github.com/microsoft/typescript-go/internal/execute/tsc"
++	"github.com/microsoft/typescript-go/internal/golarext"
+ 	"github.com/microsoft/typescript-go/internal/locale"
+ 	"github.com/microsoft/typescript-go/internal/testutil/fsbaselineutil"
+ 	"github.com/microsoft/typescript-go/internal/testutil/harnessutil"
+@@ -168,6 +170,10 @@ var (
+ 	_ tsc.CommandLineTesting = (*TestSys)(nil)
+ )
+ 
++func (s *TestSys) GetGolarCallbacks() *golarext.GolarCallbacks {
++	return golar.GolarExtCallbacks
++}
++
+ func (s *TestSys) Now() time.Time {
+ 	return s.clock.Now()
+ }
+diff --git a/internal/fourslash/fourslash.go b/internal/fourslash/fourslash.go
+index b9e223b88..d4f7ee8db 100644
+--- a/internal/fourslash/fourslash.go
++++ b/internal/fourslash/fourslash.go
+@@ -14,6 +14,7 @@ import (
+ 	"testing"
+ 	"unicode/utf8"
+ 
++	"github.com/auvred/golar/golar"
+ 	"github.com/go-json-experiment/json"
+ 	"github.com/google/go-cmp/cmp"
+ 	"github.com/microsoft/typescript-go/internal/bundled"
+@@ -141,11 +142,14 @@ const rootDir = "/"
+ var parseCache = project.ParseCache{
+ 	Options: project.ParseCacheOptions{
+ 		DisableDeletion: true,
++		GolarCallbacks: golar.GolarExtCallbacks,
+ 	},
+ }
+ 
+ func NewFourslash(t *testing.T, capabilities *lsproto.ClientCapabilities, content string) (*FourslashTest, func()) {
++	if false {
+ 	repo.SkipIfNoTypeScriptSubmodule(t)
++	}
+ 	if !bundled.Embedded {
+ 		// Without embedding, we'd need to read all of the lib files out from disk into the MapFS.
+ 		// Just skip this for now.
+@@ -204,10 +208,12 @@ func NewFourslash(t *testing.T, capabilities *lsproto.ClientCapabilities, conten
+ 	outputReader, outputWriter := newLSPPipe()
+ 
+ 	fsFromMap := vfstest.FromMap(testfs, true /*useCaseSensitiveFileNames*/)
+-	fs := bundled.WrapFS(fsFromMap)
++	fs := golar.WrapFourslashFS(testData.GlobalOptions, bundled.WrapFS(fsFromMap))
+ 
+ 	var err strings.Builder
+ 	server := lsp.NewServer(&lsp.ServerOptions{
++		GolarCallbacks: golar.GolarExtCallbacks,
++
+ 		In:  inputReader,
+ 		Out: outputWriter,
+ 		Err: &err,
+@@ -865,6 +871,9 @@ func getLanguageKind(filename string) lsproto.LanguageKind {
+ 	if tspath.FileExtensionIs(filename, tspath.ExtensionJson) {
+ 		return lsproto.LanguageKindJSON
+ 	}
++	if tspath.FileExtensionIs(filename, ".vue") {
++		return "vue"
++	}
+ 	return lsproto.LanguageKindTypeScript // !!! should we error in this case?
+ }
+ 
 diff --git a/internal/golarext/golarext.go b/internal/golarext/golarext.go
 new file mode 100644
-index 000000000..968b6008d
+index 000000000..bcd9dd600
 --- /dev/null
 +++ b/internal/golarext/golarext.go
-@@ -0,0 +1,17 @@
+@@ -0,0 +1,16 @@
 +package golarext
 +
 +import (
@@ -188,7 +287,6 @@ index 000000000..968b6008d
 +type GolarCallbacks struct {
 +	AdjustDiagnostic  func(file *ast.SourceFile, diagnostic *ast.Diagnostic) *ast.Diagnostic
 +	PositionToService func(file *ast.SourceFile, pos int) int
-+	PositionToSource  func(file *ast.SourceFile, pos int) int
 +	WrapCompilerHost  func(host compiler.CompilerHost) compiler.CompilerHost
 +	WrapASTDiagnostic func(diagnostic *ast.Diagnostic) diagnosticwriter.Diagnostic
 +	ParseSourceFile   func(opts ast.SourceFileParseOptions, sourceText string, scriptKind core.ScriptKind) *ast.SourceFile

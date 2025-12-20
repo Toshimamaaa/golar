@@ -62,8 +62,8 @@ func NewRootNode() *RootNode {
 
 type ElementNode struct {
 	Node
-	Ns            Namespace
-	Tag           string
+	Ns  Namespace
+	Tag string
 	// TagType       ElementType
 	Props         []*Node // Array<AttributeNode | DirectiveNode>
 	Children      []*Node // TemplateChildNode[]
@@ -114,10 +114,10 @@ func NewSimpleExpressionNode(ast *ast.SourceFile, loc core.TextRange, prefixLen,
 }
 
 type ForParseResult struct {
-	Source    *SimpleExpressionNode
-	Value     *SimpleExpressionNode
-	Key       *SimpleExpressionNode
-	Index     *SimpleExpressionNode
+	Source *SimpleExpressionNode
+	Value  *SimpleExpressionNode
+	Key    *SimpleExpressionNode
+	Index  *SimpleExpressionNode
 }
 
 type CommentNode struct {
@@ -144,9 +144,6 @@ func NewAttributeNode(name string, nameLoc, loc core.TextRange) *AttributeNode {
 	return &data
 }
 
-type VForDirective struct {
-}
-
 type DirectiveNode struct {
 	Node
 	// The normalized name without prefix or shorthands, e.g. "bind", "on"
@@ -156,7 +153,7 @@ type DirectiveNode struct {
 	RawName string
 	NameLoc core.TextRange
 	// Nil when directive doesn't have expression
-	Expression *SimpleExpressionNode
+	Expression     *SimpleExpressionNode
 	ForParseResult *ForParseResult
 	// arg ExpressionNode | undefined
 	// modifiers: SimpleExpressionNode[]

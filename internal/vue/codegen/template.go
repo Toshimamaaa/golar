@@ -30,7 +30,7 @@ func (c *templateCodegenCtx) enterScope() {
 }
 func (c *templateCodegenCtx) exitScope() {
 	if len(c.scopes) > 0 {
-		c.scopes = c.scopes[:len(c.scopes) - 1]
+		c.scopes = c.scopes[:len(c.scopes)-1]
 	}
 }
 func (c *templateCodegenCtx) declareScopeVar(name string) {
@@ -190,18 +190,18 @@ func (c *templateCodegenCtx) visit(el *vue_ast.ElementNode) {
 
 type expressionMapper struct {
 	*templateCodegenCtx
-	expr *vue_ast.SimpleExpressionNode
-	innerStart int
+	expr          *vue_ast.SimpleExpressionNode
+	innerStart    int
 	lastMappedPos int
-	typeOnly bool
+	typeOnly      bool
 }
 
 func newExpressionMapper(c *templateCodegenCtx, expr *vue_ast.SimpleExpressionNode) expressionMapper {
 	return expressionMapper{
 		templateCodegenCtx: c,
-		expr: expr,
-		innerStart: expr.Loc.Pos() - expr.PrefixLen,
-		lastMappedPos: expr.Loc.Pos(),
+		expr:               expr,
+		innerStart:         expr.Loc.Pos() - expr.PrefixLen,
+		lastMappedPos:      expr.Loc.Pos(),
 	}
 }
 
@@ -282,6 +282,7 @@ func (m *expressionMapper) typeOnlyVisit(v ast.Visitor, node *ast.Node) bool {
 func (m *expressionMapper) mapInNonBindingPositionIfNotIdentifier(node *ast.Node) bool {
 	return !ast.IsIdentifier(node) && m.mapInNonBindingPosition(node)
 }
+
 // TODO: more robust support for types, etc.
 func (m *expressionMapper) mapInNonBindingPosition(node *ast.Node) bool {
 	switch node.Kind {
